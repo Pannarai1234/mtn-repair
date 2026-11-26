@@ -632,6 +632,17 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 }
 .tip::first-line { font-weight: 600; }
 
+/* ---------- ผังโรงงาน ---------- */
+#layout-map.pmap { height: clamp(440px, calc(100vh - 250px), 1100px); }
+#view-layout .legend { margin-bottom: 0; }
+#l-update { margin-left: auto; }
+
+/* โหมดฝังในเว็บอื่น (?embed=layout) */
+.embed #view-app { display: block; }
+.embed .topbar, .embed .sidebar, .embed .scrim, .embed .page-head, .embed .sound-banner { display: none !important; }
+.embed .main { max-width: none; padding: 16px 18px 24px; }
+.embed #layout-map.pmap { height: clamp(420px, calc(100vh - 170px), 1100px); }
+
 /* ---------- แอดมิน ---------- */
 .admin-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 18px; align-items: start; }
 .admin-grid .card { margin-bottom: 0; }
@@ -812,6 +823,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
   .mrow .m-status { grid-column: 2; grid-row: 1; }
   .mrows { gap: 14px; }
   .pmap { height: 62vh; }
+  #layout-map.pmap, .embed #layout-map.pmap { height: 64vh; }
   .pmap-mini { height: 100%; }
   .map-tools { width: 100%; }
   .map-tools input { flex: 1; width: auto; }
