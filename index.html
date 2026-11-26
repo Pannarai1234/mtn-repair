@@ -49,6 +49,8 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
     <symbol id="i-fit" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><rect x="3" y="12" width="14" height="9" rx="2"/><path d="M7 8a6 6 0 0 1 10.5-3.5L20 7M20 3v4h-4"/></symbol>
+    <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/></symbol>
     <symbol id="i-full" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></symbol>
@@ -292,21 +294,35 @@
 
       <!-- ---------- ผังโรงงาน (เปิดแบบฝังได้ด้วย ?embed=layout) ---------- -->
       <section id="view-layout" class="view" hidden>
-        <div class="card">
-          <div class="card-head wrap">
+        <div class="card layout-card" id="layout-card">
+          <div class="layout-head">
             <div class="seg" id="l-plant" role="group" aria-label="เลือกโรง"></div>
             <div class="map-tools">
               <input type="search" id="l-search" class="search" list="machine-codes" placeholder="หารหัสเครื่องบนผัง" aria-label="ค้นหาเครื่องบนผัง" autocomplete="off">
+              <button type="button" class="btn btn-soft" id="l-full" aria-pressed="false" title="ขยายผังเต็มจอ"><svg class="ico" aria-hidden="true"><use href="#i-full"/></svg><span>เต็มจอ</span></button>
             </div>
           </div>
-          <div id="layout-map"></div>
+          <div class="layout-body">
+            <div id="layout-map"></div>
+            <aside class="l-side" aria-label="เครื่องที่เสีย">
+              <div class="l-side-head">
+                <h2 class="card-title">เครื่องเสีย <span class="count count-bad" id="l-bad-count">0</span></h2>
+                <span class="muted small" id="l-side-sub"></span>
+                <button type="button" class="l-side-toggle" id="l-side-toggle" hidden><svg class="ico" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+              </div>
+              <div id="l-alerts" class="l-alerts"></div>
+            </aside>
+          </div>
           <div class="legend">
             <span><i class="lg lg-ok"></i>ปกติ / ปิดงานแล้ว <b id="l-ok">0</b></span>
             <span><i class="lg lg-bad"></i>เสีย (มีงานค้าง) <b id="l-bad">0</b></span>
-            <span class="muted">แตะเครื่องเพื่อดูรายละเอียด · แตะชื่อโซนเพื่อกรองรายการ</span>
+            <span><i class="lg lg-stop"></i>เครื่องหยุด <b id="l-stop">0</b></span>
+            <span class="muted" id="l-hint"></span>
             <span class="muted small" id="l-update"></span>
           </div>
         </div>
+        <!-- รายการเครื่องเสีย: ปกติอยู่ตรงนี้ (ใต้ผัง) · ตอนเต็มจอย้ายเข้าไปลอยบนผัง (ดู syncLayoutSide ใน app.js) -->
+        <div id="l-side-dock"></div>
         <div class="card">
           <div class="card-head wrap">
             <h2 class="card-title">เครื่องจักร<span id="l-title"></span> <span class="count" id="l-count">0</span></h2>
