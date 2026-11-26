@@ -633,15 +633,107 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .tip::first-line { font-weight: 600; }
 
 /* ---------- ผังโรงงาน ---------- */
-#layout-map.pmap { height: clamp(440px, calc(100vh - 250px), 1100px); }
-#view-layout .legend { margin-bottom: 0; }
+/* การ์ดผังสูงเต็มจอที่เหลือ (--lc-off = ความสูงส่วนหัวของหน้า) */
+.layout-card {
+  --lc-off: 196px;
+  display: flex; flex-direction: column; gap: 12px; padding: 16px;
+  height: max(620px, calc(100dvh - var(--lc-off)));
+}
+.layout-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.layout-head .map-tools { margin-left: auto; }
+.layout-head .btn { min-height: 42px; white-space: nowrap; }
+.layout-body { position: relative; flex: 1; min-height: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+#layout-map.pmap { height: 100%; min-height: 0; }
+#view-layout .legend { margin: 0; }
 #l-update { margin-left: auto; }
+.lg-stop { background: var(--stop-a); border: 1.5px solid var(--m-bad-line); }
+
+/* รายการเครื่องเสีย: ปกติเป็นการ์ดใต้ผัง (ผังได้พื้นที่เต็ม) · ตอนเต็มจอเป็นปุ่มลอยมุมขวาบนของผัง กดเพื่อกาง */
+.l-side { display: flex; flex-direction: column; min-height: 0; }
+#l-side-dock .l-side { margin-bottom: 18px; padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow); }
+.l-side-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; margin-bottom: 12px; }
+.l-side-head .card-title { margin: 0; font-size: 1.12rem; }
+.count-bad { background: var(--danger-solid); color: #fff; }
+.count-bad.zero { background: var(--ok-soft); color: var(--ok); }
+.l-alerts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.l-alert {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 10px 12px; text-align: left; font: inherit; color: inherit;
+  border: 1px solid var(--danger-line); border-left: 5px solid var(--danger-solid); border-radius: 12px; background: var(--danger-soft); cursor: pointer;
+}
+.l-alert:hover, .l-alert:focus-visible { border-color: var(--danger-solid); }
+.l-alert.stop { border-left-color: var(--stop-a); box-shadow: inset 0 0 0 1px var(--danger-solid); }
+.l-alert-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.l-age { margin-left: auto; font-size: .8rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.l-age.age-bad { color: var(--danger); font-weight: 600; }
+.l-alert-loc { font-size: .84rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-alert-prob { font-size: .92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-empty { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px; color: var(--ok); }
+.l-empty .ico { width: 26px; height: 26px; }
+.l-empty span { color: var(--muted); font-size: .88rem; }
+
+/* เต็มจอ: ปุ่มลอย */
+.l-side-toggle {
+  display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 10px;
+  background: var(--surface-3); color: var(--primary-2); cursor: pointer;
+}
+.l-side-toggle[hidden] { display: none; }
+.l-side-toggle .ico { transform: rotate(90deg); transition: transform .15s; }
+.l-side-toggle[aria-expanded="true"] .ico { transform: rotate(-90deg); }
+.layout-card.side-float .l-side {
+  position: absolute; top: 10px; right: 10px; z-index: 5; width: 310px; max-width: calc(100% - 20px);
+  max-height: max(170px, calc(100% - 236px)); padding: 10px 12px; border: 1px solid var(--border); border-radius: 16px;
+  background: var(--surface); box-shadow: var(--shadow-lg);
+}
+.layout-card.side-float .l-side-head { margin: 0; cursor: pointer; flex-wrap: nowrap; }
+.layout-card.side-float .l-side-head .card-title { margin-right: auto; white-space: nowrap; }
+.layout-card.side-float.side-open .l-side-head { margin-bottom: 10px; }
+.layout-card.side-float:not(.side-open) .l-side { width: auto; padding: 5px 6px 5px 16px; border-radius: 999px; }
+.layout-card.side-float:not(.side-open) .l-alerts, .layout-card.side-float:not(.side-open) #l-side-sub { display: none; }
+.layout-card.side-float .l-alerts { display: flex; flex-direction: column; overflow: hidden auto; }
+.layout-card.side-float .l-alert { flex: none; }
+.layout-card.side-float .l-empty { flex-direction: column; text-align: center; white-space: normal; }
+
+/* เต็มจอ (Fullscreen API หรือขยายเต็มหน้าต่างเมื่อเบราว์เซอร์ไม่รองรับ) — ตัดขอบ/คำอธิบายออกให้ผังใหญ่ที่สุด */
+.layout-card.full { height: 100dvh; margin: 0; border-radius: 0; border: 0; padding: 10px 14px; gap: 8px; background: var(--bg); box-shadow: none; }
+.layout-card.full .seg button { min-height: 40px; }
+.layout-card.full .legend { font-size: .86rem; gap: 4px 18px; }
+.layout-card.full #l-hint { display: none; }
+.layout-card.is-full { position: fixed; inset: 0; z-index: 80; }
+html.no-scroll, html.no-scroll body { overflow: hidden; }
+
+/* ผังรวมทุกโรง: กรอบ + ชื่อโรง */
+.part-frame { fill: var(--surface); fill-opacity: .55; stroke: var(--border-2); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.part-title { cursor: pointer; outline: none; }
+.part-hit { fill: transparent; }
+.part-title:hover .part-hit, .part-title:focus-visible .part-hit { fill: var(--primary-soft); }
+.part-name { dominant-baseline: central; font-weight: 700; fill: var(--text); }
+.part-name .pk { fill: var(--ok); font-weight: 600; }
+.part-name .pb { fill: var(--danger); }
+.part-name .pg { fill: var(--primary); }
+.part-title.bad .part-hit { fill: var(--danger-soft); }
+.part-title.bad:hover .part-hit { fill: var(--primary-soft); }
+.pmap-bar button[hidden] { display: none; }
+/* เครื่องเสียที่อยู่นอกกรอบอาคาร (ตอนแสดงเฉพาะในอาคาร) */
+.pmap-out {
+  position: absolute; bottom: 10px; left: 10px; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  max-width: max(170px, calc(100% - 90px)); padding: 6px 8px 6px 12px; border-radius: 14px;
+  border: 1px solid var(--danger-line); background: var(--surface); box-shadow: var(--shadow);
+  color: var(--danger); font-size: .86rem; font-weight: 600;
+}
+.pmap-out[hidden] { display: none; }
+.pmap-out button {
+  min-height: 30px; padding: 2px 10px; border: 0; border-radius: 8px; cursor: pointer;
+  background: var(--danger-solid); color: #fff; font: inherit; font-weight: 700; animation: pin-out 1.4s ease-in-out infinite;
+}
+.pmap-out button.stop { background: var(--stop-a); animation-duration: .7s; }
+@keyframes pin-out { 50% { filter: brightness(1.25); } }
+.pmap-bar button[aria-pressed="true"] { background: var(--primary-soft); }
 
 /* โหมดฝังในเว็บอื่น (?embed=layout) */
 .embed #view-app { display: block; }
 .embed .topbar, .embed .sidebar, .embed .scrim, .embed .page-head, .embed .sound-banner { display: none !important; }
-.embed .main { max-width: none; padding: 16px 18px 24px; }
-.embed #layout-map.pmap { height: clamp(420px, calc(100vh - 170px), 1100px); }
+.embed .main { max-width: none; padding: 14px 16px 24px; }
+.embed .layout-card { --lc-off: 28px; }
 
 /* ---------- แอดมิน ---------- */
 .admin-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 18px; align-items: start; }
@@ -823,7 +915,13 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
   .mrow .m-status { grid-column: 2; grid-row: 1; }
   .mrows { gap: 14px; }
   .pmap { height: 62vh; }
-  #layout-map.pmap, .embed #layout-map.pmap { height: 64vh; }
+  .layout-card { height: auto; padding: 14px; }
+  #layout-map.pmap { height: 64vh; }
+  .layout-card.full { height: 100dvh; padding: 10px; }
+  .layout-card.full #layout-map.pmap { height: 100%; }
+  #l-side-dock .l-side { padding: 14px; }
+  .l-alerts { grid-template-columns: 1fr; }
+  .layout-head .btn span { display: none; }
   .pmap-mini { height: 100%; }
   .map-tools { width: 100%; }
   .map-tools input { flex: 1; width: auto; }
@@ -842,7 +940,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .m.bad .m-box, .m.stop .m-box, .z.bad .z-box, .pin-dot, .pin.stop .pin-bg, .m.found .m-box { animation: none; }
+  .m.bad .m-box, .m.stop .m-box, .z.bad .z-box, .pin-dot, .pin.stop .pin-bg, .m.found .m-box, .pmap-out button { animation: none; }
   .nav-badge.danger, .stat-danger.alarm { animation: none; }
   .toast { animation: none; }
 }
