@@ -62,6 +62,7 @@
     <symbol id="i-device" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
     <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M18 10h-1.260A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></symbol>
     <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.500"/><circle cx="12" cy="12" r="1.500"/><path d="M12 2v3.500M12 18.500V22M2 12h3.500M18.500 12H22"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
     <symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></symbol>
     <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5M12 7v5l3 2"/></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M8 17v-5M13 17V7M18 17v-8"/></symbol>
@@ -286,6 +287,40 @@
           <div class="card"><h2 class="card-title">แยกตามโรง</h2><div id="k-plant"></div></div>
           <div class="card"><h2 class="card-title">ไลน์ / โซนที่แจ้งซ่อมบ่อย</h2><div id="k-zone"></div></div>
           <div class="card kpi-wide"><h2 class="card-title">เครื่องที่เสียบ่อย 10 อันดับ</h2><div id="k-top"></div></div>
+        </div>
+      </section>
+
+      <!-- ---------- ผังโรงงาน (เปิดแบบฝังได้ด้วย ?embed=layout) ---------- -->
+      <section id="view-layout" class="view" hidden>
+        <div class="card">
+          <div class="card-head wrap">
+            <div class="seg" id="l-plant" role="group" aria-label="เลือกโรง"></div>
+            <div class="map-tools">
+              <input type="search" id="l-search" class="search" list="machine-codes" placeholder="หารหัสเครื่องบนผัง" aria-label="ค้นหาเครื่องบนผัง" autocomplete="off">
+            </div>
+          </div>
+          <div id="layout-map"></div>
+          <div class="legend">
+            <span><i class="lg lg-ok"></i>ปกติ / ปิดงานแล้ว <b id="l-ok">0</b></span>
+            <span><i class="lg lg-bad"></i>เสีย (มีงานค้าง) <b id="l-bad">0</b></span>
+            <span class="muted">แตะเครื่องเพื่อดูรายละเอียด · แตะชื่อโซนเพื่อกรองรายการ</span>
+            <span class="muted small" id="l-update"></span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head wrap">
+            <h2 class="card-title">เครื่องจักร<span id="l-title"></span> <span class="count" id="l-count">0</span></h2>
+            <button type="button" class="chip chip-on" id="l-zone-chip" hidden></button>
+            <div class="filters">
+              <div class="seg" id="l-status" role="group" aria-label="กรองสถานะเครื่อง">
+                <button type="button" data-v="all" class="on">ทั้งหมด</button>
+                <button type="button" data-v="bad">เสีย</button>
+                <button type="button" data-v="ok">ปกติ</button>
+              </div>
+              <input type="search" id="l-q" class="search" placeholder="รหัสหรือรายละเอียด" aria-label="ค้นหาเครื่องจักร">
+            </div>
+          </div>
+          <div id="l-list"></div>
         </div>
       </section>
 
