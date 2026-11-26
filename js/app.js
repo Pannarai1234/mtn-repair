@@ -129,6 +129,10 @@
     jobsStatus: 'all',
     jobsQ: '',
     jobsShow: 100,
+    hPlant: 'all',          // หน้าประวัติ: โรง / ช่วงเวลา
+    hPeriod: 'all',
+    kPeriod: '30',          // หน้า KPI: ช่วงเวลา
+    section: null,
     mQ: '',
     plant: 'all',           // โรงที่แสดงในหน้าติดตามงาน ('all' = ภาพรวม)
     mdStatus: 'all',
@@ -151,12 +155,19 @@
   let overview = [];
   let pickMap = null;       // ผังในหน้าต่าง "เลือกจากผัง" (สร้างเมื่อเปิดครั้งแรก)
 
+  // เมนูด้านข้าง แบ่งตามหมวด (group) — section = หน้าที่แสดง, tab = แท็บย่อยในหน้าตั้งค่า
   const VIEWS = [
-    { id: 'report', label: 'แจ้งซ่อม', sub: 'เลือกเครื่อง บอกอาการ แล้วส่งให้ช่าง', icon: 'report', perm: 'job:create' },
-    { id: 'board', label: 'ติดตามงาน', sub: 'สถานะเครื่องจักรทุกโรง อัปเดตอัตโนมัติ', icon: 'board', perm: 'job:view' },
-    { id: 'admin', label: 'ตั้งค่า', sub: 'ผังโรงงาน เครื่องจักร และระบบ', icon: 'sliders', perm: 'layout:edit' },
+    { id: 'report', group: 'work', label: 'แจ้งซ่อม', sub: 'เลือกเครื่อง บอกอาการ แล้วส่งให้ช่าง', icon: 'report', perm: 'job:create' },
+    { id: 'board', group: 'work', label: 'ติดตามงาน', sub: 'Real-time: สถานะเครื่องจักรทุกโรงและงานค้าง อัปเดตอัตโนมัติ', icon: 'board', perm: 'job:view' },
+    { id: 'history', group: 'work', label: 'ประวัติงานซ่อม', sub: 'งานแจ้งซ่อมทั้งหมด ค้นหา กรอง และดาวน์โหลดได้', icon: 'history', perm: 'job:view' },
+    { id: 'kpi', group: 'report', label: 'KPI ภาพรวม', sub: 'สรุปงานซ่อม เวลาซ่อมเฉลี่ย และเครื่องที่เสียบ่อย', icon: 'chart', perm: 'job:view' },
+    { id: 'admin-map', group: 'admin', section: 'admin', tab: 'map', label: 'แก้ผังโรงงาน', sub: 'ย้าย ปรับขนาด และแก้รหัสเครื่องบนผัง', icon: 'map', perm: 'layout:edit' },
+    { id: 'admin-list', group: 'admin', section: 'admin', tab: 'list', label: 'รายการเครื่องจักร', sub: 'รหัสและรายละเอียดเครื่องจักรทั้งหมด', icon: 'factory', perm: 'machine:edit' },
+    { id: 'admin-sys', group: 'admin', section: 'admin', tab: 'sys', label: 'ตั้งค่าระบบ', sub: 'แหล่งข้อมูล ข้อมูลทดสอบ และเสียงเตือน', icon: 'sliders', perm: 'settings:edit' },
   ];
-  const HOME = { employee: 'report', tech: 'board', admin: 'admin' };
+  const GROUPS = { work: 'งานซ่อม', report: 'รายงาน', admin: 'ผู้ดูแลระบบ' };
+  const HOME = { employee: 'report', tech: 'board', admin: 'kpi' };
+  const ALIAS = { admin: 'admin-map' };       // ลิงก์เก่า #admin
 
   // =====================================================================
   //  derived data
@@ -372,18 +383,37 @@
   function renderUser() {
     const r = Auth.ROLES[S.user.role];
     const letter = (S.user.name.match(/[ก-ฮA-Za-z0-9]/) || ['?'])[0].toUpperCase();
-    $('#btn-user').innerHTML = `<span class="avatar" aria-hidden="true">${esc(letter)}</span><span class="user-name">${esc(S.user.name)}</span><span class="user-role">${r.label}</span>`;
+    $('#btn-user').innerHTML = `<span class="avatar" aria-hidden="true">${esc(letter)}</span><span class="user-text"><span class="user-name">${esc(S.user.name)}</span><span class="user-role">${r.label}</span></span>`;
     $('#btn-user').title = `${S.user.name} (${r.label}) · แตะเพื่อออกจากระบบ`;
     $('#btn-user').setAttribute('aria-label', $('#btn-user').title);
   }
 
   function renderNav() {
-    $('#nav').innerHTML = VIEWS.filter(v => Auth.can(v.perm)).map(v => `
-      <button type="button" class="nav-btn" data-view="${v.id}">
-        ${ico(v.icon)}
-        <span class="nav-label">${v.label}</span>
-        ${v.id === 'board' ? '<span class="nav-badge" id="nav-badge" hidden></span>' : ''}
-      </button>`).join('');
+    const views = allowedViews();
+    $('#nav').innerHTML = Object.keys(GROUPS).map(g => {
+      const vs = views.filter(v => v.group === g);
+      if (!vs.length) return '';
+      return `<div class="nav-group"><div class="nav-title">${GROUPS[g]}</div>${vs.map(v => `
+        <button type="button" class="nav-btn" data-view="${v.id}" title="${esc(v.label)}">
+          ${ico(v.icon)}<span class="nav-label">${esc(v.label)}</span>
+          ${v.id === 'board' ? '<span class="nav-badge" id="nav-badge" hidden></span>' : ''}
+        </button>`).join('')}</div>`;
+    }).join('');
+  }
+
+  /** มือถือ: เปิด/ปิดเมนูเลื่อน */
+  function setNav(open) {
+    $('#view-app').classList.toggle('nav-open', open);
+    $('#scrim').hidden = !open;
+    $('#btn-menu').setAttribute('aria-expanded', String(open));
+  }
+
+  /** จอใหญ่: ย่อเมนูเหลือแต่ไอคอน */
+  function applySide(collapsed) {
+    $('#view-app').classList.toggle('side-collapsed', collapsed);
+    const b = $('#btn-collapse');
+    b.setAttribute('aria-label', collapsed ? 'ขยายเมนู' : 'ย่อเมนู');
+    b.title = b.getAttribute('aria-label');
   }
 
   function renderSoundUi() {
@@ -422,16 +452,24 @@
   function route() {
     if (!S.user) return;
     const views = allowedViews();
-    const want = location.hash.slice(1);
+    const raw = location.hash.slice(1);
+    const want = ALIAS[raw] || raw;
     const v = views.find(x => x.id === want) || views.find(x => x.id === HOME[S.user.role]) || views[0];
     if (!v) { logout(); return; }   // session หายไประหว่างใช้งาน (เช่น ออกจากระบบจากแท็บอื่น)
-    if (want !== v.id) history.replaceState(null, '', '#' + v.id);
+    if (raw !== v.id) history.replaceState(null, '', '#' + v.id);
     const changedView = S.view !== v.id;
     S.view = v.id;
-    $$('.view').forEach(el => { el.hidden = el.id !== 'view-' + v.id; });
-    $$('#nav .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v.id));
+    S.section = v.section || v.id;
+    if (v.tab) S.adminTab = v.tab;
+    $$('.view').forEach(el => { el.hidden = el.id !== 'view-' + S.section; });
+    $$('#nav .nav-btn').forEach(b => {
+      const on = b.dataset.view === v.id;
+      b.classList.toggle('active', on);
+      if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
     $('#page-title').textContent = v.label;
     $('#page-sub').textContent = v.sub;
+    setNav(false);
     if (changedView) window.scrollTo(0, 0);
     renderAll();
   }
@@ -449,9 +487,11 @@
       badge.classList.toggle('danger', X.stoppedMachines.size > 0);
     }
     document.title = (X.open.length ? `(${X.open.length}) ` : '') + 'แจ้งซ่อมเครื่องจักร';
-    if (S.view === 'report') renderReport(X);
-    if (S.view === 'board') renderBoard(X);
-    if (S.view === 'admin') renderAdmin(X);
+    if (S.section === 'report') renderReport(X);
+    if (S.section === 'board') renderBoard(X);
+    if (S.section === 'history') renderHistory(X);
+    if (S.section === 'kpi') renderKpi(X);
+    if (S.section === 'admin') renderAdmin(X);
   }
 
   // ---------- แจ้งซ่อม ----------
@@ -642,7 +682,6 @@
 
     renderMachineDetails(X);
     renderPending(X);
-    renderAllJobs(X);
   }
 
   /** ตารางเครื่องจักรใต้ผัง (แสดงเมื่อกางออก) */
@@ -766,17 +805,194 @@
       : `<div class="empty">${ico('check-circle')}ไม่มีงานค้าง${S.zoneFilter != null ? 'ในโซนนี้' : ' เครื่องทำงานปกติทุกเครื่อง'}</div>`);
   }
 
-  function renderAllJobs(X) {
+  /** งานตามตัวกรองของหน้าประวัติ (ใช้ทั้งตารางและไฟล์ CSV) */
+  function historyList(X) {
     const q = S.jobsQ.trim().toLowerCase();
-    let list = S.jobs;
-    if (S.jobsStatus !== 'all') list = list.filter(j => j.status === S.jobsStatus);
-    if (S.zoneFilter != null) list = list.filter(j => jobZoneId(X, j) === S.zoneFilter);
-    if (q) {
-      list = list.filter(j => {
-        return ['#' + j.id, machineLabel(X, j.machine_id), locOf(X, j.machine_id), j.problem, j.impact, j.note, j.reported_by, j.closed_by]
-          .some(v => v && String(v).toLowerCase().includes(q));
-      });
+    return S.jobs.filter(j => (S.jobsStatus === 'all' || j.status === S.jobsStatus)
+      && (S.hPlant === 'all' || (X.machineById.get(j.machine_id) || {}).plant === S.hPlant)
+      && (S.hPeriod === 'all' || inPeriod(j.created_at, S.hPeriod))
+      && (S.zoneFilter == null || jobZoneId(X, j) === S.zoneFilter)
+      && (!q || ['#' + j.id, machineLabel(X, j.machine_id), locOf(X, j.machine_id), j.problem, j.impact, j.note, j.reported_by, j.closed_by]
+        .some(v => v && String(v).toLowerCase().includes(q))));
+  }
+
+  function renderHistory(X) {
+    patch($('#h-plant'), 'hplant', [S.hPlant], () => plantSeg(S.hPlant), { keepFocus: true });
+    const zf = S.zoneFilter != null ? X.zoneById.get(S.zoneFilter) : null;
+    $$('.zone-chip').forEach(c => {
+      c.hidden = !zf;
+      c.textContent = zf ? `${plantName(zf.plant)} · ${zf.name}  ✕` : '';
+    });
+    renderAllJobs(X);
+  }
+
+  function exportCsv() {
+    const X = derive();
+    const list = historyList(X);
+    if (!list.length) { toast('ไม่มีงานตามตัวกรองนี้', 'error'); return; }
+    const when = iso => iso ? new Date(iso).toLocaleString('sv-SE').slice(0, 16) : '';
+    const head = ['งาน', 'รหัสเครื่อง', 'รายละเอียดเครื่อง', 'ตำแหน่ง', 'ปัญหา', 'ผลกระทบ', 'เครื่องหยุด', 'สถานะ',
+      'แจ้งเมื่อ', 'ผู้แจ้ง', 'ปิดเมื่อ', 'ใช้เวลา (นาที)', 'วิธีแก้ไข', 'ผู้ปิดงาน'];
+    const rows = list.map(j => {
+      const m = X.machineById.get(j.machine_id);
+      return [j.id, machineLabel(X, j.machine_id), m ? m.detail : '', locOf(X, j.machine_id), j.problem, j.impact,
+        isStopped(j) ? 'หยุด' : 'ไม่หยุด', j.status === 'open' ? 'ค้าง' : 'ปิดแล้ว', when(j.created_at), j.reported_by || '',
+        when(j.closed_at), j.closed_at ? Math.round((Date.parse(j.closed_at) - Date.parse(j.created_at)) / 60000) : '',
+        j.note || '', j.closed_by || ''];
+    });
+    const cell = v => {
+      let t = String(v ?? '');
+      if (/^[=+\-@]/.test(t)) t = "'" + t;            // กัน Excel ตีความเป็นสูตร
+      return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const csv = '\ufeff' + [head, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `ประวัติงานซ่อม-${new Date().toLocaleDateString('sv-SE')}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    toast(`ดาวน์โหลด ${list.length} งานแล้ว`, 'ok');
+  }
+
+  // ---------- KPI ภาพรวม ----------
+  const PERIODS = [['today', 'วันนี้'], ['7', '7 วัน'], ['30', '30 วัน'], ['all', 'ทั้งหมด']];
+  function periodStart(p) {
+    if (p === 'all') return 0;
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    if (p !== 'today') d.setDate(d.getDate() - Number(p) + 1);
+    return d.getTime();
+  }
+  const inPeriod = (iso, p) => Date.parse(iso) >= periodStart(p);
+
+  /** ช่วงของกราฟ: วันนี้ = รายชั่วโมง, 7/30 วัน = รายวัน, ทั้งหมด = รายเดือน 12 เดือน */
+  function buckets(p, jobs) {
+    const out = [];
+    const now = new Date();
+    if (p === 'today') {
+      for (let h = 0; h < 24; h++) {
+        const a = new Date(now); a.setHours(h, 0, 0, 0);
+        out.push({ label: String(h).padStart(2, '0'), tip: `${h}:00–${h + 1}:00 น.`, from: +a, to: +a + 3600e3 });
+      }
+    } else if (p === 'all') {
+      for (let i = 11; i >= 0; i--) {
+        const a = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const b = new Date(a.getFullYear(), a.getMonth() + 1, 1);
+        out.push({ label: a.toLocaleDateString('th-TH', { month: 'short' }), tip: a.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' }), from: +a, to: +b });
+      }
+    } else {
+      for (let i = Number(p) - 1; i >= 0; i--) {
+        const a = new Date(now); a.setHours(0, 0, 0, 0); a.setDate(a.getDate() - i);
+        const b = new Date(a); b.setDate(b.getDate() + 1);
+        out.push({ label: String(a.getDate()), tip: a.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' }), from: +a, to: +b });
+      }
     }
+    for (const k of out) {
+      const js = jobs.filter(j => { const t = Date.parse(j.created_at); return t >= k.from && t < k.to; });
+      k.n = js.length;
+      k.stopped = js.filter(isStopped).length;
+    }
+    return out;
+  }
+
+  const statTile = (icon, cls, label, value, numCls = '') => `
+    <div class="stat ${cls}"><span class="stat-ico">${ico(icon)}</span>
+      <div class="stat-body"><div class="stat-label">${label}</div><div class="stat-num ${numCls}">${value}</div></div></div>`;
+
+  /** แท่งแนวนอน (สีเดียว) — rows: { label(html), value, tip } */
+  function hbars(rows, empty) {
+    if (!rows.some(r => r.value)) return `<div class="empty">${ico('check-circle')}${empty}</div>`;
+    const max = Math.max(1, ...rows.map(r => r.value));
+    return `<div class="hbars">${rows.map(r => `
+      <div class="hbar" data-tip="${esc(r.tip)}">
+        <span class="hbar-label">${r.label}</span>
+        <span class="hbar-track"><i style="width:${r.value / max * 100}%"></i></span>
+        <span class="hbar-val">${r.value}</span>
+      </div>`).join('')}</div>`;
+  }
+
+  function renderKpi(X) {
+    patch($('#k-period'), 'kperiod', [S.kPeriod], () => PERIODS.map(([v, l]) => segBtn(v, l, S.kPeriod === v)).join(''), { keepFocus: true });
+    const label = PERIODS.find(p => p[0] === S.kPeriod)[1];
+    const jobs = S.jobs.filter(j => inPeriod(j.created_at, S.kPeriod));
+    const closed = jobs.filter(j => j.status === 'closed' && j.closed_at);
+    const mttr = closed.length ? closed.reduce((a, j) => a + Date.parse(j.closed_at) - Date.parse(j.created_at), 0) / closed.length : null;
+    const pct = jobs.length ? Math.round(closed.length / jobs.length * 100) : 0;
+    const partial = store.mode === 'api' && store.totalJobs != null && store.totalJobs > S.jobs.length;
+    $('#k-note').textContent = partial ? `คำนวณจากงานล่าสุด ${S.jobs.length} งานที่โหลดไว้` : 'นับตามเวลาที่แจ้งซ่อม';
+    const minute = Math.floor(Date.now() / 60000);
+
+    patch($('#kpi-stats'), 'kstats', [jobs.length, closed.length, mttr, S.kPeriod], () => [
+      statTile('list', '', `งานแจ้งซ่อม (${label})`, jobs.length),
+      statTile('check-circle', 'stat-ok', 'ปิดงานแล้ว', `${closed.length}<small>${pct}%</small>`),
+      statTile('clock', 'stat-warn', 'เวลาซ่อมเฉลี่ย (MTTR)', mttr == null ? '–' : fmtDur(mttr), 'sm'),
+      statTile('stop', 'stat-danger', 'แจ้งว่าเครื่องหยุด', jobs.filter(isStopped).length),
+    ].join(''));
+
+    // กราฟแท่งตามเวลา (สีเดียว ไม่ต้องมีคำอธิบายสี)
+    const bs = buckets(S.kPeriod, jobs);
+    const max = Math.max(1, ...bs.map(b => b.n));
+    const ticks = max <= 3 ? [max, 0] : [max, Math.round(max / 2), 0];
+    const every = bs.length > 24 ? 5 : bs.length > 12 ? 3 : 1;
+    $('#k-daily-title').textContent = S.kPeriod === 'today' ? 'งานแจ้งซ่อมรายชั่วโมง (วันนี้)'
+      : S.kPeriod === 'all' ? 'งานแจ้งซ่อมรายเดือน (12 เดือนล่าสุด)' : `งานแจ้งซ่อมรายวัน (${label}ล่าสุด)`;
+    patch($('#k-daily'), 'kdaily', [bs.map(b => [b.label, b.n, b.stopped]), minute], () => `
+      <div class="colchart" role="img" aria-label="${esc(bs.map(b => `${b.tip} ${b.n} งาน`).join(', '))}">
+        <div class="col-grid">${ticks.map(t => `<span data-v="${t}"></span>`).join('')}</div>
+        <div class="cols">${bs.map((b, i) => `
+          <div class="col" data-tip="${esc(`${b.tip}\n${b.n} งาน${b.stopped ? ` · เครื่องหยุด ${b.stopped}` : ''}`)}">
+            <i style="height:${b.n / max * 100}%"></i>
+            <span class="col-x">${i % every === 0 || i === bs.length - 1 ? esc(b.label) : ''}</span>
+          </div>`).join('')}</div>
+      </div>
+      <details class="tbl-toggle"><summary>ดูเป็นตาราง</summary>
+        <div class="table-wrap"><table class="jobs-table"><thead><tr><th>ช่วงเวลา</th><th>งาน</th><th>เครื่องหยุด</th></tr></thead>
+        <tbody>${bs.filter(b => b.n).map(b => `<tr><td>${esc(b.tip)}</td><td>${b.n}</td><td>${b.stopped}</td></tr>`).join('') || '<tr><td colspan="3">ไม่มีงานในช่วงนี้</td></tr>'}</tbody></table></div>
+      </details>`);
+
+    // แยกตามโรง
+    const plantRows = PLANTS.map(p => {
+      const js = jobs.filter(j => (X.machineById.get(j.machine_id) || {}).plant === p.id);
+      const open = js.filter(j => j.status === 'open').length;
+      return { label: esc(p.name), value: js.length, tip: `${p.name}\n${js.length} งาน · ค้าง ${open} · เครื่องหยุด ${js.filter(isStopped).length}` };
+    });
+    patch($('#k-plant'), 'kplant', [plantRows], () => hbars(plantRows, 'ไม่มีงานแจ้งซ่อมในช่วงนี้'));
+
+    // ไลน์/โซน และเครื่องที่เสียบ่อย
+    const group = keyOf => {
+      const m = new Map();
+      for (const j of jobs) {
+        const k = keyOf(j);
+        if (k == null) continue;
+        const g = m.get(k) || { n: 0, stopped: 0, last: j };
+        g.n++;
+        if (isStopped(j)) g.stopped++;
+        if (j.created_at > g.last.created_at) g.last = j;
+        m.set(k, g);
+      }
+      return [...m].sort((a, b) => b[1].n - a[1].n);
+    };
+    const zoneRows = group(j => jobZoneId(X, j)).slice(0, 8).map(([zid, g]) => {
+      const z = X.zoneById.get(zid);
+      const name = `${plantName(z.plant)} · ${z.name}`;
+      return { label: esc(name), value: g.n, tip: `${name}\n${g.n} งาน${g.stopped ? ` · เครื่องหยุด ${g.stopped}` : ''}` };
+    });
+    patch($('#k-zone'), 'kzone', [zoneRows], () => hbars(zoneRows, 'ไม่มีงานแจ้งซ่อมในช่วงนี้'));
+    const topRows = group(j => j.machine_id).slice(0, 10).map(([mid, g]) => {
+      const m = X.machineById.get(mid);
+      const name = machineLabel(X, mid);
+      return {
+        label: `${tag(name, X.broken.has(mid))}<small>${esc((m && m.detail) || locOf(X, mid))}</small>`,
+        value: g.n,
+        tip: `${name}${m && m.detail ? ' ' + m.detail : ''}\n${locOf(X, mid)}\n${g.n} งาน${g.stopped ? ` · เครื่องหยุด ${g.stopped}` : ''}\nล่าสุด: ${g.last.problem}`,
+      };
+    });
+    patch($('#k-top'), 'ktop', [topRows], () => hbars(topRows, 'ไม่มีงานแจ้งซ่อมในช่วงนี้'));
+  }
+
+  function renderAllJobs(X) {
+    const list = historyList(X);
     const rows = list.slice(0, S.jobsShow);
     const total = store.totalJobs;
     patch($('#all-jobs'), 'alljobs', [rows, list.length, S.machines, S.zones, total, S.jobs.length], () => {
@@ -1090,7 +1306,7 @@
   }
 
   function locate(id) {
-    S.adminTab = 'map';
+    go('admin-map');
     select({ type: 'machine', id });
     renderAll();
     $('#admin-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1183,6 +1399,49 @@
       if (b) go(b.dataset.view);
     });
     window.addEventListener('hashchange', route);
+    $('#btn-menu').addEventListener('click', () => setNav(!$('#view-app').classList.contains('nav-open')));
+    $('#scrim').addEventListener('click', () => setNav(false));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setNav(false); });
+    $('#btn-collapse').addEventListener('click', () => {
+      const c = !$('#view-app').classList.contains('side-collapsed');
+      applySide(c);
+      try { localStorage.setItem('mtn.ui.side', c ? 'collapsed' : 'open'); } catch { /* ignore */ }
+    });
+    $('#h-plant').addEventListener('click', e => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      S.hPlant = b.dataset.v;
+      S.jobsShow = 100;
+      renderAll();
+    });
+    $('#h-period').addEventListener('change', e => { S.hPeriod = e.target.value; S.jobsShow = 100; renderAll(); });
+    $('#btn-csv').addEventListener('click', exportCsv);
+    $('#k-period').addEventListener('click', e => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      S.kPeriod = b.dataset.v;
+      renderAll();
+    });
+    // tooltip ของกราฟ KPI (เมาส์ชี้หรือแตะ)
+    const tip = document.createElement('div');
+    tip.className = 'tip';
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    const kv = $('#view-kpi');
+    kv.addEventListener('pointermove', e => {
+      const t = e.target.closest('[data-tip]');
+      if (!t) { tip.hidden = true; return; }
+      tip.textContent = t.dataset.tip;
+      tip.hidden = false;
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      let x = e.clientX + 14, y = e.clientY - h - 12;
+      if (x + w > innerWidth - 8) x = Math.max(8, e.clientX - w - 14);
+      if (y < 8) y = e.clientY + 18;
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    });
+    kv.addEventListener('pointerleave', () => { tip.hidden = true; });
+    window.addEventListener('scroll', () => { tip.hidden = true; }, { passive: true });
     $('#btn-user').addEventListener('click', async () => {
       if (await ask(`ออกจากระบบ (${S.user.name})?`, { ok: 'ออกจากระบบ', danger: false })) logout();
     });
@@ -1339,12 +1598,6 @@
     // ----- admin -----
     $('#btn-add-zone').addEventListener('click', addZone);
     $('#btn-add-machine').addEventListener('click', addMachine);
-    $('#admin-tabs').addEventListener('click', e => {
-      const b = e.target.closest('button[data-v]');
-      if (!b) return;
-      S.adminTab = b.dataset.v;
-      renderAll();
-    });
     $('#admin-plants').addEventListener('click', e => {
       const b = e.target.closest('button[data-v]');
       if (!b) return;
@@ -1584,6 +1837,9 @@
 
   function init() {
     applyTheme(currentTheme());
+    let side = null;
+    try { side = localStorage.getItem('mtn.ui.side'); } catch { /* ignore */ }
+    applySide(side ? side === 'collapsed' : window.innerWidth < 1180);
     try {
       const p = localStorage.getItem('mtn.plant');
       if (p && (p === 'all' || PLANTS.some(x => x.id === p))) S.plant = p;
