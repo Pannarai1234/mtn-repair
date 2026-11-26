@@ -132,7 +132,9 @@
     hPlant: 'all',          // หน้าประวัติ: โรง / ช่วงเวลา
     hPeriod: 'all',
     kPeriod: '30',          // หน้า KPI: ช่วงเวลา
-    lPlant: PLANTS[0].id,   // หน้าผังโรงงาน: โรง / โซน / สถานะ / คำค้น
+    lPlant: 'all',          // หน้าผังโรงงาน: โรง ('all' = ผังรวม) / โซน / สถานะ / คำค้น
+    lFocus: null,           // เครื่องที่เพิ่งกดจากรายการเครื่องเสีย
+    lSideOpen: false,       // ผังโรงเดียว: กางรายการเครื่องเสียที่ลอยบนผังอยู่ไหม
     lZone: null,
     lStatus: 'all',
     lQ: '',
@@ -774,7 +776,7 @@
     if (!list.length) { toast(`ไม่พบเครื่อง "${text}" บนผัง`, 'error'); return; }
     if (list.length > 1) toast(`พบ ${list.length} เครื่อง แสดงเครื่องแรก: ${list[0].name}`, 'info');
     setPlant(list[0].plant);
-    requestAnimationFrame(() => boardMap.focusMachine(list[0].id));
+    requestAnimationFrame(() => { if (!boardMap.focusMachine(list[0].id)) openMachine(list[0].id); });
   }
 
   function setPlant(id) {
@@ -1006,47 +1008,178 @@
   }
 
   // ---------- ผังโรงงาน ----------
-  function machineTable(X, list) {
+  function machineTable(X, list, withPlant) {
     if (!list.length) return '<div class="empty">ไม่มีเครื่องตามเงื่อนไขนี้</div>';
+    const loc = withPlant ? 'โรง / โซน' : 'โซน';
     return `<div class="table-wrap"><table class="jobs-table md-table">
-      <thead><tr><th>รหัส</th><th>รายละเอียด</th><th>โซน</th><th>สถานะ</th></tr></thead>
+      <thead><tr><th>รหัส</th><th>รายละเอียด</th><th>${loc}</th><th>สถานะ</th></tr></thead>
       <tbody>${list.map(m => {
         const b = X.broken.get(m.id);
         const z = X.zoneById.get(m.zone_id);
         return `<tr data-mid="${m.id}">
           <td data-label="รหัส"><span>${tag(m.name, b)}</span></td>
           <td data-label="รายละเอียด" class="${m.detail ? '' : 'empty-cell'}">${esc(m.detail) || '–'}</td>
-          <td data-label="โซน">${esc(z ? z.name : 'ไม่ระบุโซน')}</td>
+          <td data-label="${loc}">${esc(withPlant ? locText(X, m) : (z ? z.name : 'ไม่ระบุโซน'))}</td>
           <td data-label="สถานะ"><span>${machineBadge(b)}</span></td></tr>`;
       }).join('')}</tbody></table></div>`;
   }
 
+  /** รายการเครื่องเสียข้างผัง: เครื่องหยุดก่อน แล้วเรียงตามเวลาที่ค้างนานสุด */
+  function layoutAlerts(X, inScope) {
+    const byMachine = new Map();
+    for (const j of X.open) {
+      const m = X.machineById.get(j.machine_id);
+      if (!m || !inScope(m)) continue;
+      let a = byMachine.get(m.id);
+      if (!a) byMachine.set(m.id, (a = { m, jobs: [], stopped: false, since: Infinity, latest: null }));
+      a.jobs.push(j);
+      if (isStopped(j)) a.stopped = true;
+      const t = Date.parse(j.created_at);
+      if (t < a.since) a.since = t;
+      if (!a.latest || t > Date.parse(a.latest.created_at)) a.latest = j;
+    }
+    return [...byMachine.values()].sort((a, b) => (b.stopped - a.stopped) || (a.since - b.since));
+  }
+
   function renderLayout(X) {
     const counts = plantCounts(X);
+    const all = S.lPlant === 'all';
+    if (!all && !PLANTS.some(p => p.id === S.lPlant)) S.lPlant = 'all';
     if (S.lZone != null && !X.zoneById.has(S.lZone)) S.lZone = null;
-    patch($('#l-plant'), 'lplant', [S.lPlant, [...counts]], () => plantTabs(S.lPlant, counts), { keepFocus: true });
-    layoutMap.setPlant(plantById(S.lPlant));
+    syncLayoutSide();
+    const sum = [...counts].filter(([id]) => all || id === S.lPlant)
+      .reduce((a, [, c]) => ({ total: a.total + c.total, bad: a.bad + c.bad, stopped: a.stopped + c.stopped }), { total: 0, bad: 0, stopped: 0 });
+    const allBad = [...counts.values()].reduce((a, c) => a + c.bad, 0);
+    patch($('#l-plant'), 'lplant', [S.lPlant, [...counts]],
+      () => segBtn('all', 'รวมทุกโรง', all, allBad) + plantTabs(S.lPlant, counts), { keepFocus: true });
+    layoutMap.setPlant(all ? PLANTS : plantById(S.lPlant));
     layoutMap.render({ zones: S.zones, machines: S.machines, broken: X.broken, stats: X.zoneStats, flash: X.flash, filterZone: S.lZone });
-    const c = counts.get(S.lPlant) || { total: 0, bad: 0 };
-    $('#l-ok').textContent = c.total - c.bad;
-    $('#l-bad').textContent = c.bad;
+    $('#l-ok').textContent = sum.total - sum.bad;
+    $('#l-bad').textContent = sum.bad;
+    $('#l-stop').textContent = sum.stopped;
+    $('#l-hint').textContent = all
+      ? 'แตะชื่อโรงเพื่อเปิดผังโรงนั้น · แตะเครื่องเพื่อดูรายละเอียด'
+      : 'แตะเครื่องเพื่อดูรายละเอียด · แตะชื่อโซนเพื่อกรองรายการ';
     patch($('#machine-codes'), 'codes', [S.machines.map(m => m.name)], () => S.machines.map(m => `<option value="${esc(m.name)}">${esc(m.detail)}</option>`).join(''));
 
+    // เครื่องเสีย (ข้างผัง)
+    const inScope = m => all || m.plant === S.lPlant;
+    const alerts = layoutAlerts(X, inScope);
+    const now = Date.now();
+    const bc = $('#l-bad-count');
+    bc.textContent = alerts.length;
+    bc.classList.toggle('zero', !alerts.length);
+    $('#l-side-sub').textContent = alerts.length
+      ? `${sum.stopped ? `หยุด ${sum.stopped} · ` : ''}${all ? 'ทุกโรง' : plantName(S.lPlant)}`
+      : '';
+    const rows = alerts.map(a => [a.m.id, a.stopped, a.jobs.length, a.latest.problem, Math.floor((now - a.since) / 60000)]);
+    patch($('#l-alerts'), 'lalerts', [rows, S.lPlant], () => alerts.length ? alerts.map(a => {
+      const age = now - a.since;
+      const more = a.jobs.length > 1 ? ` (+${a.jobs.length - 1} งาน)` : '';
+      return `<button type="button" class="l-alert ${a.stopped ? 'stop' : ''}" data-mid="${a.m.id}" title="แสดงตำแหน่งบนผัง">
+        <span class="l-alert-top">${tag(a.m.name, true)}${a.stopped ? `<span class="badge badge-danger">${ico('stop')}หยุด</span>` : ''}<span class="l-age ${age > 4 * 3600e3 ? 'age-bad' : ''}">ค้าง ${fmtDur(age)}</span></span>
+        <span class="l-alert-loc">${esc(locText(X, a.m))}</span>
+        <span class="l-alert-prob">${esc(a.latest.problem)}${more}</span>
+      </button>`;
+    }).join('') : `<div class="l-empty">${ico('check-circle')}<b>ทุกเครื่องปกติ</b><span>ไม่มีงานซ่อมค้าง${all ? '' : `ใน${esc(plantName(S.lPlant))}`}</span></div>`);
+
+    // ตารางเครื่องจักร
     const z = S.lZone != null ? X.zoneById.get(S.lZone) : null;
     $('#l-zone-chip').hidden = !z;
     $('#l-zone-chip').textContent = z ? `${z.name}  ✕` : '';
     $$('#l-status button').forEach(b => b.classList.toggle('on', b.dataset.v === S.lStatus));
     const q = norm(S.lQ);
     const order = new Map(S.zones.map((zz, i) => [zz.id, i]));
-    const list = S.machines.filter(m => m.plant === S.lPlant
+    const plantOrder = new Map(PLANTS.map((p, i) => [p.id, i]));
+    const list = S.machines.filter(m => inScope(m)
       && (S.lZone == null || m.zone_id === S.lZone)
       && (S.lStatus === 'all' || (S.lStatus === 'bad') === X.broken.has(m.id))
       && (!q || norm(m.name).includes(q) || norm(m.detail).includes(q)))
       .sort((a, b) => (X.broken.has(b.id) - X.broken.has(a.id))
+        || ((plantOrder.get(a.plant) ?? 99) - (plantOrder.get(b.plant) ?? 99))
         || ((order.get(a.zone_id) ?? 999) - (order.get(b.zone_id) ?? 999)) || byName(a, b));
-    $('#l-title').textContent = ` · ${plantName(S.lPlant)}`;
+    $('#l-title').textContent = ` · ${all ? 'ทุกโรง' : plantName(S.lPlant)}`;
     $('#l-count').textContent = list.length;
-    patch($('#l-list'), 'llist', [list, S.zones, [...X.broken]], () => machineTable(X, list));
+    patch($('#l-list'), 'llist', [list, S.zones, [...X.broken], all], () => machineTable(X, list, all));
+  }
+
+  // ---------- ผังเต็มจอ ----------
+  const MOBILE = window.matchMedia('(max-width: 760px)');
+  const layoutFull = () => {
+    const card = $('#layout-card');
+    return !!card && (document.fullscreenElement === card || card.classList.contains('is-full'));
+  };
+  let fullTok = 0;
+  /** ขยายผังเต็มจอ — ต้องเรียกตอนผู้ใช้คลิก (เบราว์เซอร์อนุญาตเต็มจอเฉพาะจังหวะนั้น) */
+  function enterLayoutFull() {
+    const card = $('#layout-card');
+    if (!card || layoutFull()) return;
+    const tok = ++fullTok;
+    if (card.requestFullscreen && document.fullscreenEnabled !== false) {
+      // เบราว์เซอร์/เว็บที่ฝัง (iframe) ไม่ยอมให้เต็มจอ → ขยายเต็มหน้าต่างแทน
+      const fallback = () => {
+        if (tok !== fullTok || layoutFull()) return;
+        card.classList.add('is-full');
+        syncLayoutFull();
+      };
+      card.requestFullscreen().catch(fallback);
+      setTimeout(fallback, 800);
+    } else card.classList.add('is-full');
+    syncLayoutFull();
+  }
+  function exitLayoutFull() {
+    const card = $('#layout-card');
+    if (!card) return;
+    ++fullTok;
+    if (document.fullscreenElement === card) document.exitFullscreen();
+    card.classList.remove('is-full');
+    syncLayoutFull();
+  }
+  const toggleLayoutFull = () => (layoutFull() ? exitLayoutFull() : enterLayoutFull());
+
+  function syncLayoutFull() {
+    const card = $('#layout-card');
+    if (!card) return;
+    const on = layoutFull();
+    card.classList.toggle('full', on);
+    document.documentElement.classList.toggle('no-scroll', card.classList.contains('is-full'));
+    const b = $('#l-full');
+    b.setAttribute('aria-pressed', on);
+    b.title = on ? 'ออกจากเต็มจอ (Esc)' : 'ขยายผังเต็มจอ';
+    b.innerHTML = on ? `${ico('shrink')}<span>ย่อกลับ</span>` : `${ico('full')}<span>เต็มจอ</span>`;
+    syncLayoutSide();
+  }
+
+  /**
+   * รายการเครื่องเสีย: ปกติเป็นการ์ดใต้ผัง (ผังได้ความกว้างเต็ม)
+   * ตอนเต็มจอ ย้ายเข้าไปเป็นปุ่มลอยมุมขวาบนของผัง (กดเพื่อกาง) เพราะนอกการ์ดผังจะมองไม่เห็นตอนเต็มจอ
+   */
+  function syncLayoutSide() {
+    const card = $('#layout-card');
+    if (!card) return;
+    const float = layoutFull();
+    const side = $('.l-side');
+    const home = float ? $('.layout-body', card) : $('#l-side-dock');
+    if (home && side.parentElement !== home) home.appendChild(side);
+    const open = float && S.lSideOpen;
+    card.classList.toggle('side-float', float);
+    card.classList.toggle('side-open', open);
+    const t = $('#l-side-toggle');
+    t.hidden = !float;
+    t.setAttribute('aria-expanded', open);
+    t.title = open ? 'ซ่อนรายการ' : 'แสดงรายการเครื่องเสีย';
+    t.setAttribute('aria-label', t.title);
+  }
+
+  /** เปิดผังโรงเดียว (จากแท็บ หรือแตะชื่อโรงในผังรวม) → ขยายเต็มจอให้เห็นชัด ๆ */
+  function openLayoutPlant(id) {
+    if (id !== 'all') enterLayoutFull();
+    if (S.lPlant === id) return;
+    S.lPlant = id;
+    S.lZone = null;
+    S.lFocus = null;
+    renderAll();
+    layoutMap.fit();
   }
 
   /** โหมดฝัง (?embed=layout): แสดงผังโรงงานอย่างเดียว ไม่ต้องล็อกอิน และดูได้อย่างเดียว */
@@ -1490,11 +1623,7 @@
     // หน้าผังโรงงาน
     $('#l-plant').addEventListener('click', e => {
       const b = e.target.closest('button[data-v]');
-      if (!b || S.lPlant === b.dataset.v) return;
-      S.lPlant = b.dataset.v;
-      S.lZone = null;
-      renderAll();
-      layoutMap.fit();
+      if (b) openLayoutPlant(b.dataset.v);
     });
     $('#l-status').addEventListener('click', e => {
       const b = e.target.closest('button[data-v]');
@@ -1507,8 +1636,28 @@
     $('#l-list').addEventListener('click', e => {
       const tr = e.target.closest('[data-mid]');
       if (!tr) return;
+      const id = Number(tr.dataset.mid);
+      if (!layoutMap.focusMachine(id)) { openMachine(id); return; }      // เครื่องนอกอาคาร (ไม่อยู่บนผัง)
       $('#layout-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      layoutMap.focusMachine(Number(tr.dataset.mid));
+    });
+    $('#l-alerts').addEventListener('click', e => {
+      const b = e.target.closest('[data-mid]');
+      if (!b) return;
+      const id = Number(b.dataset.mid);
+      // กดซ้ำที่เครื่องเดิม = เปิดรายละเอียด
+      if (S.lFocus === id && layoutMap.zoom > 1.01) { openMachine(id); return; }
+      if (!layoutMap.focusMachine(id)) { openMachine(id); return; }      // เครื่องนอกอาคาร (ไม่อยู่บนผัง)
+      S.lFocus = id;
+      if (!layoutFull()) $('#layout-map').scrollIntoView({ behavior: 'smooth', block: 'center' });   // รายการอยู่ใต้ผัง → เลื่อนขึ้นไปดูผัง
+    });
+    $('.l-side-head').addEventListener('click', () => {
+      if (!$('#layout-card').classList.contains('side-float')) return;
+      S.lSideOpen = !S.lSideOpen;
+      syncLayoutSide();
+    });
+    $('#l-full').addEventListener('click', toggleLayoutFull);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && $('#layout-card').classList.contains('is-full') && !document.querySelector('dialog[open]')) exitLayoutFull();
     });
     $('#l-search').addEventListener('change', e => {
       const text = e.target.value;
@@ -1519,10 +1668,10 @@
       const exact = S.machines.filter(m => norm(m.name) === q);
       const hits = exact.length ? exact : S.machines.filter(m => norm(m.name).includes(q) || norm(m.detail).includes(q));
       if (!hits.length) { toast(`ไม่พบเครื่อง "${text}" บนผัง`, 'error'); return; }
-      S.lPlant = hits[0].plant;
+      if (S.lPlant !== 'all') S.lPlant = hits[0].plant;     // ผังรวมมีทุกเครื่องอยู่แล้ว ไม่ต้องเปลี่ยนโรง
       S.lZone = null;
       renderAll();
-      requestAnimationFrame(() => layoutMap.focusMachine(hits[0].id));
+      requestAnimationFrame(() => { if (!layoutMap.focusMachine(hits[0].id)) openMachine(hits[0].id); });
     });
     $('#k-period').addEventListener('click', e => {
       const b = e.target.closest('button[data-v]');
@@ -1643,6 +1792,7 @@
     });
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement) document.body.appendChild($('#toasts'));
+      syncLayoutFull();
     });
     const mdlg = $('#machine-dialog');
     $$('[data-close]', mdlg).forEach(b => b.addEventListener('click', () => mdlg.close()));
@@ -1944,7 +2094,9 @@
   }
 
   function init() {
-    S.embed = new URLSearchParams(location.search).get('embed') === 'layout';
+    const qs = new URLSearchParams(location.search);
+    S.embed = qs.get('embed') === 'layout';
+    if (PLANTS.some(p => p.id === qs.get('plant'))) S.lPlant = qs.get('plant');     // ?plant=1 เปิดผังโรงเดียว
     applyTheme(currentTheme());
     let side = null;
     try { side = localStorage.getItem('mtn.ui.side'); } catch { /* ignore */ }
@@ -1971,6 +2123,7 @@
 
     boardMap = new PlantMap($('#board-map'), {
       plant: plantById(S.plant),
+      crop: true,
       onMachine: openMachine,
       onZone: id => {
         S.zoneFilter = S.zoneFilter === id ? null : id;
@@ -1984,10 +2137,16 @@
       onChange: (type, o) => saveObj(type, o).then(() => renderPanel(derive(), true)),
     });
     layoutMap = new PlantMap($('#layout-map'), {
-      plant: PLANTS[0],
+      plant: S.lPlant === 'all' ? PLANTS : plantById(S.lPlant),
+      crop: true,                   // แสดงเฉพาะกรอบอาคารหลัก ให้ภาพใหญ่
+      arrange: window.PLANT_LAYOUT.combined,     // ผังรวม: ตำแหน่งแต่ละโรง (จอแนวตั้ง)
+      arrangeWide: window.PLANT_LAYOUT.combinedWide,   // ผังรวม: ตำแหน่งแต่ละโรง (จอแนวนอน ทุกโรงหมุน)
+      weight: window.PLANT_LAYOUT.combinedWeight, // ผังรวม: โรง 1 ได้พื้นที่มากกว่า
       onMachine: openMachine,
       onZone: id => { S.lZone = S.lZone === id ? null : id; renderAll(); },
+      onPart: openLayoutPlant,      // แตะชื่อโรงในผังรวม → เปิดโรงนั้นเต็มจอ
     });
+    syncLayoutFull();
     bindEvents();
     if (S.embed) startEmbed(); else startApp();
   }
