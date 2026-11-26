@@ -62,6 +62,10 @@
     <symbol id="i-device" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
     <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M18 10h-1.260A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></symbol>
     <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.500"/><circle cx="12" cy="12" r="1.500"/><path d="M12 2v3.500M12 18.500V22M2 12h3.500M18.500 12H22"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5M12 7v5l3 2"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M8 17v-5M13 17V7M18 17v-8"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
     <symbol id="i-zone" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3.200 3"/></symbol>
   </defs>
 </svg>
@@ -88,18 +92,26 @@
 
 <!-- ===================== ตัวแอป ===================== -->
 <div id="view-app" hidden>
-  <header class="rail">
+  <header class="topbar">
+    <button id="btn-menu" class="icon-btn menu-btn" type="button" aria-label="เปิดเมนู" aria-controls="sidebar" aria-expanded="false"><svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg></button>
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="#i-wrench"/></svg></span>
-      <span class="brand-text">แจ้งซ่อมเครื่องจักร</span>
+      <span class="brand-text"><b>แจ้งซ่อมเครื่องจักร</b><small>MAINTENANCE</small></span>
     </div>
-    <nav id="nav" class="nav" aria-label="เมนูหลัก"></nav>
-    <div class="rail-foot">
+    <div class="top-actions">
+      <span id="conn" class="conn" role="status"></span>
       <button id="btn-sound" class="icon-btn" type="button" aria-label="เสียงเตือน"></button>
       <button id="btn-theme" class="icon-btn" type="button" aria-label="สลับธีม"></button>
       <button id="btn-user" class="user-chip" type="button"></button>
     </div>
   </header>
+
+  <!-- เมนูด้านข้าง (มือถือ = เมนูเลื่อนออกจากซ้าย) -->
+  <aside class="sidebar" id="sidebar">
+    <nav id="nav" class="nav" aria-label="เมนูหลัก"></nav>
+    <button type="button" class="collapse-btn" id="btn-collapse" aria-label="ย่อเมนู"><svg class="ico" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
 
   <div class="stage">
     <button id="sound-banner" class="sound-banner" type="button" hidden>
@@ -114,7 +126,6 @@
           <p id="page-sub" class="muted"></p>
         </div>
         <div class="page-meta">
-          <span id="conn" class="conn" role="status"></span>
           <span id="last-update" class="muted small"></span>
         </div>
       </div>
@@ -237,30 +248,49 @@
           </div>
         </div>
 
+      </section>
+
+      <!-- ---------- ประวัติงานซ่อม ---------- -->
+      <section id="view-history" class="view" hidden>
         <div class="card">
-          <div class="card-head wrap">
-            <h2 class="card-title">งานทั้งหมด</h2>
-            <button type="button" class="chip chip-on zone-chip" hidden></button>
-            <div class="filters">
-              <div class="seg" id="jobs-status" role="group" aria-label="กรองสถานะ">
-                <button type="button" data-v="all" class="on">ทั้งหมด</button>
-                <button type="button" data-v="open">ค้าง</button>
-                <button type="button" data-v="closed">ปิดแล้ว</button>
-              </div>
-              <input type="search" id="jobs-q" class="search" placeholder="เครื่อง ปัญหา หรือผู้แจ้ง" aria-label="ค้นหางาน">
+          <div class="toolbar">
+            <div class="seg" id="jobs-status" role="group" aria-label="กรองสถานะ">
+              <button type="button" data-v="all" class="on">ทั้งหมด</button>
+              <button type="button" data-v="open">ค้าง</button>
+              <button type="button" data-v="closed">ปิดแล้ว</button>
             </div>
+            <div class="seg" id="h-plant" role="group" aria-label="กรองโรง"></div>
+            <select id="h-period" aria-label="ช่วงเวลา">
+              <option value="all">ทุกช่วงเวลา</option>
+              <option value="today">วันนี้</option>
+              <option value="7">7 วันล่าสุด</option>
+              <option value="30">30 วันล่าสุด</option>
+            </select>
+            <input type="search" id="jobs-q" class="search" placeholder="เครื่อง ปัญหา หรือผู้แจ้ง" aria-label="ค้นหางาน">
+            <button type="button" class="btn btn-soft" id="btn-csv"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>ดาวน์โหลด CSV</button>
           </div>
+          <button type="button" class="chip chip-on zone-chip" hidden></button>
           <div id="all-jobs"></div>
+        </div>
+      </section>
+
+      <!-- ---------- KPI ภาพรวม ---------- -->
+      <section id="view-kpi" class="view" hidden>
+        <div class="kpi-head">
+          <div class="seg" id="k-period" role="group" aria-label="ช่วงเวลา"></div>
+          <span class="muted small" id="k-note"></span>
+        </div>
+        <div class="stats stats-eq" id="kpi-stats"></div>
+        <div class="kpi-grid">
+          <div class="card kpi-wide"><h2 class="card-title" id="k-daily-title">งานแจ้งซ่อม</h2><div id="k-daily"></div></div>
+          <div class="card"><h2 class="card-title">แยกตามโรง</h2><div id="k-plant"></div></div>
+          <div class="card"><h2 class="card-title">ไลน์ / โซนที่แจ้งซ่อมบ่อย</h2><div id="k-zone"></div></div>
+          <div class="card kpi-wide"><h2 class="card-title">เครื่องที่เสียบ่อย 10 อันดับ</h2><div id="k-top"></div></div>
         </div>
       </section>
 
       <!-- ---------- ตั้งค่า (แอดมิน) ---------- -->
       <section id="view-admin" class="view" hidden>
-        <div class="seg admin-tabs" id="admin-tabs" role="group" aria-label="หมวดตั้งค่า">
-          <button type="button" data-v="map" class="on">แก้ผังโรงงาน</button>
-          <button type="button" data-v="list">รายการเครื่องจักร</button>
-          <button type="button" data-v="sys">ระบบ</button>
-        </div>
 
         <div class="pane" data-pane="map">
           <div class="admin-grid">
