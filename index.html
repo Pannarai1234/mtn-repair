@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="th" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>แจ้งซ่อมเครื่องจักร</title>
+  <meta name="description" content="ระบบแจ้งซ่อมและติดตามงานซ่อมเครื่องจักรในโรงงาน">
+  <meta name="theme-color" content="#e6f2fc">
+  <!-- ตั้งธีมก่อนวาดหน้า กันจอกะพริบ (ค่าเริ่มต้น = สว่าง) -->
+  <script>
+    (function () {
+      var t = 'light';
+      try { t = localStorage.getItem('mtn.ui.theme') || 'light'; } catch (e) { /* private mode */ }
+      var dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })();
+  </script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%230b74ba'/><g transform='translate(4 4)' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z'/></g></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===================== ไอคอน (เรียกใช้ด้วย <use href="#i-ชื่อ">) ===================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><path d="M9 4H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3M12 11v6M9 14h6"/><rect x="9" y="2" width="6" height="4" rx="1"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
+    <symbol id="i-bell-off" viewBox="0 0 24 24"><path d="M13.73 21a2 2 0 0 1-3.46 0M18.63 13A17.89 17.89 0 0 1 18 8M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.33-5M2 2l20 20"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v2M12 20.5v2M4.6 4.6L6 6M18 18l1.4 1.4M1.5 12h2M20.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+    <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M2 6.5V21l6.5-3.5 7 3.5 6.5-3.5V3l-6.5 3.5-7-3.5L2 6.5zM8.5 3v14.5M15.5 6.5V21"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6.5-8 12-8 12s-8-5.500-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="2.8"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.3 12.4l2.6 2.6 4.8-5.2"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86L7.86 2zM8 12h8"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.500 3.500z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+    <symbol id="i-full" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-factory" viewBox="0 0 24 24"><path d="M2.500 20.500V9.500l6 4v-4l6 4V3.500h6.500v17zM7 17h.01M11.500 17h.01M16 17h.01"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 2h6M10 2v7l-5.500 9.500a2 2 0 0 0 1.700 3h11.600a2 2 0 0 0 1.700-3L14 9V2M7.500 15h9"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M2 4v6h6M3.500 15a9 9 0 1 0 2.130-9.360L2 10"/></symbol>
+    <symbol id="i-device" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M18 10h-1.260A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.500"/><circle cx="12" cy="12" r="1.500"/><path d="M12 2v3.500M12 18.500V22M2 12h3.500M18.500 12H22"/></symbol>
+    <symbol id="i-zone" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3.200 3"/></symbol>
+  </defs>
+</svg>
+
+<!-- ===================== เข้าสู่ระบบ ===================== -->
+<section id="view-login" class="login-screen" hidden>
+  <div class="login-art" aria-hidden="true"><div id="login-map"></div></div>
+  <form id="login-form" class="login-card" autocomplete="on">
+    <span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="#i-wrench"/></svg></span>
+    <h1>แจ้งซ่อมเครื่องจักร</h1>
+    <p class="muted">ใส่ชื่อ แล้วเลือกบทบาทเพื่อเข้าใช้งาน</p>
+
+    <label class="field">
+      <span>ชื่อ / รหัสพนักงาน</span>
+      <input id="login-name" name="name" maxlength="60" autocomplete="name" placeholder="เช่น สมชาย หรือ EMP001">
+    </label>
+
+    <!-- AUTH-HOOK: เมื่อมีระบบล็อกอินจริง เพิ่มช่องรหัสผ่านตรงนี้ แล้วแก้ Auth.login() ใน js/auth.js -->
+
+    <div class="role-list" id="role-grid"></div>
+    <p class="muted small">ช่วงทดสอบยังไม่มีรหัสผ่าน เลือกบทบาทได้ทันที</p>
+  </form>
+</section>
+
+<!-- ===================== ตัวแอป ===================== -->
+<div id="view-app" hidden>
+  <header class="rail">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg class="ico"><use href="#i-wrench"/></svg></span>
+      <span class="brand-text">แจ้งซ่อมเครื่องจักร</span>
+    </div>
+    <nav id="nav" class="nav" aria-label="เมนูหลัก"></nav>
+    <div class="rail-foot">
+      <button id="btn-sound" class="icon-btn" type="button" aria-label="เสียงเตือน"></button>
+      <button id="btn-theme" class="icon-btn" type="button" aria-label="สลับธีม"></button>
+      <button id="btn-user" class="user-chip" type="button"></button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <button id="sound-banner" class="sound-banner" type="button" hidden>
+      <svg class="ico" aria-hidden="true"><use href="#i-bell-off"/></svg>
+      <span>เบราว์เซอร์ปิดเสียงไว้ <b>แตะตรงนี้</b> เพื่อเปิดเสียงเตือน</span>
+    </button>
+
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1 id="page-title"></h1>
+          <p id="page-sub" class="muted"></p>
+        </div>
+        <div class="page-meta">
+          <span id="conn" class="conn" role="status"></span>
+          <span id="last-update" class="muted small"></span>
+        </div>
+      </div>
+
+      <!-- ---------- แจ้งซ่อม ---------- -->
+      <section id="view-report" class="view" hidden>
+        <div class="report-layout">
+          <form id="report-form" class="card form" novalidate>
+
+            <div class="step" data-step="1">
+              <h2 class="step-title">เครื่องไหนเสีย <b class="req">*</b></h2>
+              <div id="f-picked" hidden></div>
+              <div id="f-pickbox">
+                <div class="seg seg-block" id="f-plant" role="group" aria-label="เลือกโรง"></div>
+                <input type="search" id="f-search" class="search" placeholder="พิมพ์รหัสเครื่อง เช่น G2071" aria-label="ค้นหารหัสเครื่อง" autocomplete="off" autocapitalize="characters">
+                <div id="f-results" class="results" hidden></div>
+                <div class="pick-row" id="f-pickrow">
+                  <select id="f-machine" name="machine_id" aria-label="เลือกจากรายการเครื่อง"></select>
+                  <button type="button" class="btn btn-soft" id="btn-pick-map"><svg class="ico" aria-hidden="true"><use href="#i-map"/></svg>เลือกจากผัง</button>
+                </div>
+              </div>
+              <p id="f-empty" class="note warn" hidden>ยังไม่มีรายการเครื่องจักร ให้แอดมินเพิ่มที่เมนู "ตั้งค่า"</p>
+              <div id="f-machine-warn" class="note warn" hidden></div>
+            </div>
+
+            <div class="step" data-step="2">
+              <h2 class="step-title"><label for="f-problem">อาการเป็นอย่างไร</label> <b class="req">*</b></h2>
+              <textarea id="f-problem" name="problem" rows="3" maxlength="1000" required
+                placeholder="เช่น มีเสียงดังผิดปกติ, มอเตอร์ไม่หมุน, น้ำมันรั่ว"></textarea>
+            </div>
+
+            <div class="step" data-step="3">
+              <h2 class="step-title"><label for="f-impact">กระทบอะไรบ้าง</label></h2>
+              <div class="chips" id="impact-chips">
+                <button type="button" class="chip">กระทบการผลิต</button>
+                <button type="button" class="chip">ผลิตได้ช้าลง</button>
+                <button type="button" class="chip">กระทบคุณภาพสินค้า</button>
+                <button type="button" class="chip">เสี่ยงต่อความปลอดภัย</button>
+                <button type="button" class="chip">ยังไม่กระทบ</button>
+              </div>
+              <textarea id="f-impact" name="impact" rows="2" maxlength="1000" placeholder="เลือกด้านบน หรือพิมพ์เพิ่มเติม"></textarea>
+            </div>
+
+            <div class="step" data-step="4" role="group" aria-labelledby="stop-title">
+              <h2 class="step-title" id="stop-title">เครื่องหยุดทำงานหรือไม่ <b class="req">*</b></h2>
+              <div class="toggle-2" id="f-stopped">
+                <label class="opt opt-stop"><input type="radio" name="stopped" value="1"><span><svg class="ico" aria-hidden="true"><use href="#i-stop"/></svg>หยุดทำงาน</span></label>
+                <label class="opt opt-run"><input type="radio" name="stopped" value="0"><span><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg>ยังทำงานได้</span></label>
+              </div>
+            </div>
+
+            <button type="submit" id="btn-submit" class="btn btn-primary btn-xl btn-block"></button>
+          </form>
+
+          <div class="card">
+            <h2 class="card-title">งานที่ฉันแจ้งล่าสุด</h2>
+            <div id="my-jobs" class="mini-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- ติดตามงาน ---------- -->
+      <section id="view-board" class="view" hidden>
+        <div class="stats">
+          <div class="stat stat-ok">
+            <span class="stat-ico"><svg class="ico" aria-hidden="true"><use href="#i-check-circle"/></svg></span>
+            <div class="stat-body"><div class="stat-label">เครื่องปกติ</div><div class="stat-num"><span id="st-ok">0</span><small id="st-okof"></small></div></div>
+            <div class="stat-bar"><i id="st-okbar"></i></div>
+          </div>
+          <div class="stat stat-danger" id="stat-stopped">
+            <span class="stat-ico"><svg class="ico" aria-hidden="true"><use href="#i-stop"/></svg></span>
+            <div class="stat-body"><div class="stat-label">เครื่องหยุด</div><div class="stat-num" id="st-stopped">0</div></div>
+          </div>
+          <div class="stat stat-warn">
+            <span class="stat-ico"><svg class="ico" aria-hidden="true"><use href="#i-clock"/></svg></span>
+            <div class="stat-body"><div class="stat-label">งานค้าง</div><div class="stat-num" id="st-open">0</div></div>
+          </div>
+          <div class="stat">
+            <span class="stat-ico"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg></span>
+            <div class="stat-body"><div class="stat-label">งานทั้งหมด</div><div class="stat-num" id="st-total">0</div></div>
+          </div>
+        </div>
+
+        <div class="board-grid">
+          <div class="card map-card" id="map-card">
+            <div class="card-head wrap">
+              <div class="seg" id="plant-tabs" role="group" aria-label="เลือกโรง"></div>
+              <div class="map-tools">
+                <input type="search" id="map-search" class="search" list="machine-codes" placeholder="หารหัสเครื่องบนผัง" aria-label="ค้นหาเครื่องบนผัง" autocomplete="off">
+                <datalist id="machine-codes"></datalist>
+                <button type="button" class="icon-btn" id="btn-full" title="เต็มจอ" aria-label="แสดงผังเต็มจอ"><svg class="ico" aria-hidden="true"><use href="#i-full"/></svg></button>
+              </div>
+            </div>
+            <div id="board-overview" class="ov-grid"></div>
+            <div id="board-map" hidden></div>
+            <div class="legend">
+              <span><i class="lg lg-ok"></i>ปกติ / ปิดงานแล้ว <b id="lg-ok">0</b></span>
+              <span><i class="lg lg-bad"></i>เสีย (มีงานค้าง) <b id="lg-bad">0</b></span>
+              <span class="muted" id="map-hint"></span>
+            </div>
+            <details id="machine-details">
+              <summary><svg class="ico caret" aria-hidden="true"><use href="#i-chevron"/></svg>รายการเครื่องจักร<span id="md-title"></span></summary>
+              <div class="filters md-filters">
+                <div class="seg" id="md-status" role="group" aria-label="กรองสถานะเครื่อง">
+                  <button type="button" data-v="all" class="on">ทั้งหมด</button>
+                  <button type="button" data-v="bad">เสีย</button>
+                  <button type="button" data-v="ok">ปกติ</button>
+                </div>
+              </div>
+              <div id="md-list"></div>
+            </details>
+          </div>
+
+          <div class="card pending-card" id="pending-card">
+            <div class="card-head wrap">
+              <h2 class="card-title">งานค้าง <span class="count" id="pending-count">0</span></h2>
+              <button type="button" class="chip chip-on zone-chip" hidden></button>
+            </div>
+            <div id="pending-list" class="job-list"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head wrap">
+            <h2 class="card-title">งานทั้งหมด</h2>
+            <button type="button" class="chip chip-on zone-chip" hidden></button>
+            <div class="filters">
+              <div class="seg" id="jobs-status" role="group" aria-label="กรองสถานะ">
+                <button type="button" data-v="all" class="on">ทั้งหมด</button>
+                <button type="button" data-v="open">ค้าง</button>
+                <button type="button" data-v="closed">ปิดแล้ว</button>
+              </div>
+              <input type="search" id="jobs-q" class="search" placeholder="เครื่อง ปัญหา หรือผู้แจ้ง" aria-label="ค้นหางาน">
+            </div>
+          </div>
+          <div id="all-jobs"></div>
+        </div>
+      </section>
+
+      <!-- ---------- ตั้งค่า (แอดมิน) ---------- -->
+      <section id="view-admin" class="view" hidden>
+        <div class="seg admin-tabs" id="admin-tabs" role="group" aria-label="หมวดตั้งค่า">
+          <button type="button" data-v="map" class="on">แก้ผังโรงงาน</button>
+          <button type="button" data-v="list">รายการเครื่องจักร</button>
+          <button type="button" data-v="sys">ระบบ</button>
+        </div>
+
+        <div class="pane" data-pane="map">
+          <div class="admin-grid">
+            <div class="card">
+              <div class="card-head wrap">
+                <div class="seg-row">
+                  <div class="seg" id="admin-plants" role="group" aria-label="เลือกโรง"></div>
+                  <div class="seg" id="admin-layer" role="group" aria-label="สิ่งที่แก้ไข">
+                    <button type="button" data-v="machine" class="on">แก้เครื่องจักร</button>
+                    <button type="button" data-v="zone">แก้โซน</button>
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button type="button" id="btn-add-zone" class="btn btn-soft"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>เพิ่มโซน</button>
+                  <button type="button" id="btn-add-machine" class="btn btn-primary"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>เพิ่มเครื่อง</button>
+                </div>
+              </div>
+              <div id="admin-map"></div>
+              <p class="muted small hint">แตะเพื่อเลือก ลากเพื่อย้าย ลากจุดมุมขวาล่างเพื่อปรับขนาด กรอบส้มคือรหัสที่รอตรวจ (คีย์บอร์ด: ลูกศรย้าย, Shift+ลูกศรปรับขนาด)</p>
+            </div>
+            <div class="card" id="zone-panel"></div>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="list" hidden>
+          <div class="card">
+            <div class="card-head wrap">
+              <h2 class="card-title">เครื่องจักร <span class="count" id="machine-count">0</span></h2>
+              <div class="filters">
+                <div class="seg" id="m-filter" role="group" aria-label="กรองเครื่องจักร"></div>
+                <input type="search" id="m-search" class="search" placeholder="รหัส รายละเอียด หรือโซน" aria-label="ค้นหาเครื่องจักร">
+              </div>
+            </div>
+            <div id="machine-table"></div>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="sys" hidden>
+          <div class="card sys-card" id="settings-body"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- ===================== รายละเอียดงาน / ปิดงาน ===================== -->
+<dialog id="job-dialog" class="dialog" aria-labelledby="jd-title">
+  <form id="jd-form" novalidate>
+    <div class="dialog-head">
+      <h2 id="jd-title"></h2>
+      <button type="button" class="icon-btn" data-close aria-label="ปิดหน้าต่าง"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dialog-body">
+      <div id="jd-body"></div>
+      <div id="jd-close">
+        <div class="field">
+          <label for="jd-note">วิธีแก้ไข / บันทึกการซ่อม <b class="req">*</b></label>
+          <div class="chips" id="note-chips">
+            <button type="button" class="chip">เปลี่ยนอะไหล่</button>
+            <button type="button" class="chip">ปรับตั้งเครื่อง</button>
+            <button type="button" class="chip">ทำความสะอาด</button>
+            <button type="button" class="chip">ขันแน่น/ยึดใหม่</button>
+            <button type="button" class="chip">รีเซ็ตระบบ</button>
+            <button type="button" class="chip">ทดสอบแล้วใช้งานได้ปกติ</button>
+          </div>
+          <textarea id="jd-note" rows="4" maxlength="2000" placeholder="สาเหตุ / สิ่งที่ทำ / อะไหล่ที่เปลี่ยน"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>ยกเลิก</button>
+      <button type="submit" id="jd-submit" class="btn btn-ok btn-lg"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>ปิดงาน</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ===================== รายละเอียดเครื่องจักร ===================== -->
+<dialog id="machine-dialog" class="dialog" aria-labelledby="md-name">
+  <div class="dialog-col">
+    <div class="dialog-head">
+      <h2 id="md-name"></h2>
+      <button type="button" class="icon-btn" data-close aria-label="ปิดหน้าต่าง"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dialog-body" id="md-body"></div>
+    <div class="dialog-actions" id="md-actions"></div>
+  </div>
+</dialog>
+
+<!-- ===================== เลือกเครื่องจากผัง ===================== -->
+<dialog id="pick-dialog" class="dialog dialog-wide" aria-labelledby="pk-title">
+  <div class="dialog-col">
+    <div class="dialog-head">
+      <h2 id="pk-title">แตะเครื่องที่เสียบนผัง</h2>
+      <button type="button" class="icon-btn" data-close aria-label="ปิดหน้าต่าง"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dialog-body">
+      <div class="seg seg-block" id="pick-plants" role="group" aria-label="เลือกโรง"></div>
+      <div id="pick-map"></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- ===================== ยืนยันการทำรายการ (แทน confirm() ที่บางเบราว์เซอร์บล็อก) ===================== -->
+<dialog id="confirm-dialog" class="dialog dialog-sm" aria-labelledby="cf-msg">
+  <form method="dialog">
+    <div class="dialog-body"><p id="cf-msg" class="cf-msg"></p></div>
+    <div class="dialog-actions">
+      <button type="submit" value="cancel" class="btn">ยกเลิก</button>
+      <button type="submit" value="ok" id="cf-ok" class="btn btn-danger-solid">ยืนยัน</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="js/config.js"></script>
+<script src="js/layout-data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/store.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/map.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
