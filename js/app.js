@@ -132,6 +132,11 @@
     hPlant: 'all',          // หน้าประวัติ: โรง / ช่วงเวลา
     hPeriod: 'all',
     kPeriod: '30',          // หน้า KPI: ช่วงเวลา
+    lPlant: PLANTS[0].id,   // หน้าผังโรงงาน: โรง / โซน / สถานะ / คำค้น
+    lZone: null,
+    lStatus: 'all',
+    lQ: '',
+    embed: false,           // เปิดแบบฝังในเว็บอื่น (?embed=layout)
     section: null,
     mQ: '',
     plant: 'all',           // โรงที่แสดงในหน้าติดตามงาน ('all' = ภาพรวม)
@@ -153,6 +158,7 @@
   let boardMap;
   let adminMap;
   let overview = [];
+  let layoutMap = null;
   let pickMap = null;       // ผังในหน้าต่าง "เลือกจากผัง" (สร้างเมื่อเปิดครั้งแรก)
 
   // เมนูด้านข้าง แบ่งตามหมวด (group) — section = หน้าที่แสดง, tab = แท็บย่อยในหน้าตั้งค่า
@@ -161,11 +167,12 @@
     { id: 'board', group: 'work', label: 'ติดตามงาน', sub: 'Real-time: สถานะเครื่องจักรทุกโรงและงานค้าง อัปเดตอัตโนมัติ', icon: 'board', perm: 'job:view' },
     { id: 'history', group: 'work', label: 'ประวัติงานซ่อม', sub: 'งานแจ้งซ่อมทั้งหมด ค้นหา กรอง และดาวน์โหลดได้', icon: 'history', perm: 'job:view' },
     { id: 'kpi', group: 'report', label: 'KPI ภาพรวม', sub: 'สรุปงานซ่อม เวลาซ่อมเฉลี่ย และเครื่องที่เสียบ่อย', icon: 'chart', perm: 'job:view' },
-    { id: 'admin-map', group: 'admin', section: 'admin', tab: 'map', label: 'แก้ผังโรงงาน', sub: 'ย้าย ปรับขนาด และแก้รหัสเครื่องบนผัง', icon: 'map', perm: 'layout:edit' },
+    { id: 'layout', group: 'plant', label: 'ผังโรงงาน', sub: 'Plant Layout: สถานะเครื่องจักรทุกเครื่องบนผังโรงงาน', icon: 'map', perm: 'job:view' },
+    { id: 'admin-map', group: 'admin', section: 'admin', tab: 'map', label: 'แก้ผังโรงงาน', sub: 'ย้าย ปรับขนาด และแก้รหัสเครื่องบนผัง', icon: 'edit', perm: 'layout:edit' },
     { id: 'admin-list', group: 'admin', section: 'admin', tab: 'list', label: 'รายการเครื่องจักร', sub: 'รหัสและรายละเอียดเครื่องจักรทั้งหมด', icon: 'factory', perm: 'machine:edit' },
     { id: 'admin-sys', group: 'admin', section: 'admin', tab: 'sys', label: 'ตั้งค่าระบบ', sub: 'แหล่งข้อมูล ข้อมูลทดสอบ และเสียงเตือน', icon: 'sliders', perm: 'settings:edit' },
   ];
-  const GROUPS = { work: 'งานซ่อม', report: 'รายงาน', admin: 'ผู้ดูแลระบบ' };
+  const GROUPS = { work: 'งานซ่อม', report: 'รายงาน', plant: 'โรงงาน', admin: 'ผู้ดูแลระบบ' };
   const HOME = { employee: 'report', tech: 'board', admin: 'kpi' };
   const ALIAS = { admin: 'admin-map' };       // ลิงก์เก่า #admin
 
@@ -343,6 +350,11 @@
     if (!alerts.length) return;
 
     const X = derive();
+    if (S.embed) {                       // โหมดฝัง: กะพริบบนผังอย่างเดียว ไม่มีเสียง/ข้อความ
+      const until = Date.now() + 15000;
+      alerts.forEach(j => S.flash.set(j.machine_id, until));
+      return;
+    }
     Sound.play(alerts.some(isStopped) ? 'stopped' : 'normal');
     const until = Date.now() + 15000;
     alerts.forEach(j => S.flash.set(j.machine_id, until));
@@ -377,6 +389,7 @@
         ? `อัปเดต ${S.lastOk.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
         : '';
       if (!ok) lu.textContent = `เชื่อมต่อไม่ได้ · ${lu.textContent || 'ยังไม่มีข้อมูล'}`;
+      $('#l-update').textContent = lu.textContent;
     }
   }
 
@@ -450,7 +463,7 @@
   }
 
   function route() {
-    if (!S.user) return;
+    if (!S.user || S.embed) return;
     const views = allowedViews();
     const raw = location.hash.slice(1);
     const want = ALIAS[raw] || raw;
@@ -491,6 +504,7 @@
     if (S.section === 'board') renderBoard(X);
     if (S.section === 'history') renderHistory(X);
     if (S.section === 'kpi') renderKpi(X);
+    if (S.section === 'layout') renderLayout(X);
     if (S.section === 'admin') renderAdmin(X);
   }
 
@@ -724,7 +738,7 @@
     const open = X.open.filter(j => j.machine_id === id);
     const hist = S.jobs.filter(j => j.machine_id === id && j.status === 'closed').slice(0, 5);
     const z = X.zoneById.get(m.zone_id);
-    const canClose = Auth.can('job:close');
+    const canClose = !S.embed && Auth.can('job:close');
     $('#md-name').innerHTML = tag(m.name, b, 'tag-lg');
     $('#md-body').innerHTML = `
       <div class="m-banner ${b ? 'bad' : 'ok'}">${b ? (b.stopped ? ico('stop') + 'เสีย เครื่องหยุดทำงาน' : ico('alert') + 'เสีย มีงานค้าง') : ico('check-circle') + 'ปกติ'}</div>
@@ -745,7 +759,7 @@
           <span class="mini-main"><b>#${j.id} ${esc(j.problem)}</b><span class="muted small">${esc(j.note || '')}</span></span>
           <span class="mini-side"><span class="muted small">ปิด ${fmtTime(j.closed_at, true)}</span></span>
         </button>`).join('') : '<p class="muted">ยังไม่มีประวัติ</p>'}`;
-    $('#md-actions').innerHTML = Auth.can('job:create')
+    $('#md-actions').innerHTML = !S.embed && Auth.can('job:create')
       ? `<button type="button" class="btn btn-primary btn-lg" data-report="${m.id}">${ico('report')}แจ้งซ่อมเครื่องนี้</button>` : '';
     const dlg = $('#machine-dialog');
     if (!dlg.open) dlg.showModal();
@@ -991,6 +1005,63 @@
     patch($('#k-top'), 'ktop', [topRows], () => hbars(topRows, 'ไม่มีงานแจ้งซ่อมในช่วงนี้'));
   }
 
+  // ---------- ผังโรงงาน ----------
+  function machineTable(X, list) {
+    if (!list.length) return '<div class="empty">ไม่มีเครื่องตามเงื่อนไขนี้</div>';
+    return `<div class="table-wrap"><table class="jobs-table md-table">
+      <thead><tr><th>รหัส</th><th>รายละเอียด</th><th>โซน</th><th>สถานะ</th></tr></thead>
+      <tbody>${list.map(m => {
+        const b = X.broken.get(m.id);
+        const z = X.zoneById.get(m.zone_id);
+        return `<tr data-mid="${m.id}">
+          <td data-label="รหัส"><span>${tag(m.name, b)}</span></td>
+          <td data-label="รายละเอียด" class="${m.detail ? '' : 'empty-cell'}">${esc(m.detail) || '–'}</td>
+          <td data-label="โซน">${esc(z ? z.name : 'ไม่ระบุโซน')}</td>
+          <td data-label="สถานะ"><span>${machineBadge(b)}</span></td></tr>`;
+      }).join('')}</tbody></table></div>`;
+  }
+
+  function renderLayout(X) {
+    const counts = plantCounts(X);
+    if (S.lZone != null && !X.zoneById.has(S.lZone)) S.lZone = null;
+    patch($('#l-plant'), 'lplant', [S.lPlant, [...counts]], () => plantTabs(S.lPlant, counts), { keepFocus: true });
+    layoutMap.setPlant(plantById(S.lPlant));
+    layoutMap.render({ zones: S.zones, machines: S.machines, broken: X.broken, stats: X.zoneStats, flash: X.flash, filterZone: S.lZone });
+    const c = counts.get(S.lPlant) || { total: 0, bad: 0 };
+    $('#l-ok').textContent = c.total - c.bad;
+    $('#l-bad').textContent = c.bad;
+    patch($('#machine-codes'), 'codes', [S.machines.map(m => m.name)], () => S.machines.map(m => `<option value="${esc(m.name)}">${esc(m.detail)}</option>`).join(''));
+
+    const z = S.lZone != null ? X.zoneById.get(S.lZone) : null;
+    $('#l-zone-chip').hidden = !z;
+    $('#l-zone-chip').textContent = z ? `${z.name}  ✕` : '';
+    $$('#l-status button').forEach(b => b.classList.toggle('on', b.dataset.v === S.lStatus));
+    const q = norm(S.lQ);
+    const order = new Map(S.zones.map((zz, i) => [zz.id, i]));
+    const list = S.machines.filter(m => m.plant === S.lPlant
+      && (S.lZone == null || m.zone_id === S.lZone)
+      && (S.lStatus === 'all' || (S.lStatus === 'bad') === X.broken.has(m.id))
+      && (!q || norm(m.name).includes(q) || norm(m.detail).includes(q)))
+      .sort((a, b) => (X.broken.has(b.id) - X.broken.has(a.id))
+        || ((order.get(a.zone_id) ?? 999) - (order.get(b.zone_id) ?? 999)) || byName(a, b));
+    $('#l-title').textContent = ` · ${plantName(S.lPlant)}`;
+    $('#l-count').textContent = list.length;
+    patch($('#l-list'), 'llist', [list, S.zones, [...X.broken]], () => machineTable(X, list));
+  }
+
+  /** โหมดฝัง (?embed=layout): แสดงผังโรงงานอย่างเดียว ไม่ต้องล็อกอิน และดูได้อย่างเดียว */
+  function startEmbed() {
+    document.documentElement.classList.add('embed');
+    S.user = { name: 'จอแสดงผล', role: 'viewer' };
+    $('#view-login').hidden = true;
+    $('#view-app').hidden = false;
+    S.view = S.section = 'layout';
+    $$('.view').forEach(el => { el.hidden = el.id !== 'view-layout'; });
+    setConn(true);
+    refresh({ meta: true });
+    startPolling();
+  }
+
   function renderAllJobs(X) {
     const list = historyList(X);
     const rows = list.slice(0, S.jobsShow);
@@ -1175,7 +1246,7 @@
     const j = S.jobs.find(x => x.id === id);
     if (!j) return;
     const X = derive();
-    const canClose = j.status === 'open' && Auth.can('job:close');
+    const canClose = !S.embed && j.status === 'open' && Auth.can('job:close');
     S.dialogJob = id;
     $('#jd-title').innerHTML = `${tag(machineLabel(X, j.machine_id), j.status === 'open', 'tag-lg')}<span>งาน #${j.id}</span>`;
     $('#jd-body').innerHTML = `
@@ -1416,6 +1487,43 @@
     });
     $('#h-period').addEventListener('change', e => { S.hPeriod = e.target.value; S.jobsShow = 100; renderAll(); });
     $('#btn-csv').addEventListener('click', exportCsv);
+    // หน้าผังโรงงาน
+    $('#l-plant').addEventListener('click', e => {
+      const b = e.target.closest('button[data-v]');
+      if (!b || S.lPlant === b.dataset.v) return;
+      S.lPlant = b.dataset.v;
+      S.lZone = null;
+      renderAll();
+      layoutMap.fit();
+    });
+    $('#l-status').addEventListener('click', e => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      S.lStatus = b.dataset.v;
+      renderAll();
+    });
+    $('#l-q').addEventListener('input', e => { S.lQ = e.target.value; renderAll(); });
+    $('#l-zone-chip').addEventListener('click', () => { S.lZone = null; renderAll(); });
+    $('#l-list').addEventListener('click', e => {
+      const tr = e.target.closest('[data-mid]');
+      if (!tr) return;
+      $('#layout-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      layoutMap.focusMachine(Number(tr.dataset.mid));
+    });
+    $('#l-search').addEventListener('change', e => {
+      const text = e.target.value;
+      const q = norm(text);
+      e.target.value = '';
+      e.target.blur();
+      if (!q) return;
+      const exact = S.machines.filter(m => norm(m.name) === q);
+      const hits = exact.length ? exact : S.machines.filter(m => norm(m.name).includes(q) || norm(m.detail).includes(q));
+      if (!hits.length) { toast(`ไม่พบเครื่อง "${text}" บนผัง`, 'error'); return; }
+      S.lPlant = hits[0].plant;
+      S.lZone = null;
+      renderAll();
+      requestAnimationFrame(() => layoutMap.focusMachine(hits[0].id));
+    });
     $('#k-period').addEventListener('click', e => {
       const b = e.target.closest('button[data-v]');
       if (!b) return;
@@ -1836,6 +1944,7 @@
   }
 
   function init() {
+    S.embed = new URLSearchParams(location.search).get('embed') === 'layout';
     applyTheme(currentTheme());
     let side = null;
     try { side = localStorage.getItem('mtn.ui.side'); } catch { /* ignore */ }
@@ -1874,8 +1983,13 @@
       onSelect: select,
       onChange: (type, o) => saveObj(type, o).then(() => renderPanel(derive(), true)),
     });
+    layoutMap = new PlantMap($('#layout-map'), {
+      plant: PLANTS[0],
+      onMachine: openMachine,
+      onZone: id => { S.lZone = S.lZone === id ? null : id; renderAll(); },
+    });
     bindEvents();
-    startApp();
+    if (S.embed) startEmbed(); else startApp();
   }
 
   // สำหรับดีบักในคอนโซล: MTN.store, MTN.state
