@@ -6,7 +6,13 @@
   'use strict';
 
   const CFG = window.APP_CONFIG;
-  const { Auth, Sound, Store, PlantMap } = window;
+  const SHEET = CFG.SHEET || {};
+  const { Auth, Sound, Store, PlantMap, SheetFeed } = window;
+  /** ใช้ใบงานจาก Google Sheet อยู่ไหม (ตั้งลิงก์ใน config.js หรือหน้า "ตั้งค่าระบบ") */
+  const useSheet = () => !!(SheetFeed && SheetFeed.enabled());
+  const isSheetJob = j => j && j.source === 'sheet';
+  /** เลขงานที่แสดง: ใบงานจากชีตใช้เลข WO, งานในเว็บใช้ #id */
+  const jobNo = j => (isSheetJob(j) ? (j.wo || 'ใบงาน') : `#${j.id}`);
   const PLANTS = window.PLANT_LAYOUT.plants;
   const norm = window.PLANT_LAYOUT.normCode;
   const plantById = id => PLANTS.find(p => p.id === id) || PLANTS[0];
@@ -143,6 +149,10 @@
     mQ: '',
     plant: 'all',           // โรงที่แสดงในหน้าติดตามงาน ('all' = ภาพรวม)
     mdStatus: 'all',
+    // ใบงานจาก Google Sheet: jobs = งานค้างที่จับคู่เครื่องได้, unmatched = รหัสที่หาบนผังไม่เจอ
+    sheet: { jobs: [], unmatched: [], rows: 0, at: null, err: null, cols: null },
+    woSeen: new Set(),
+    woLoaded: false,
     rPlant: 'all',          // หน้าแจ้งซ่อม: โรง / คำค้น
     rQ: '',
     rPick: null,            // id เครื่องที่เลือกไว้ในหน้าแจ้งซ่อม
@@ -184,7 +194,9 @@
   function derive() {
     const zoneById = new Map(S.zones.map(z => [z.id, z]));
     const machineById = new Map(S.machines.map(m => [m.id, m]));
-    const open = S.jobs.filter(j => j.status === 'open');
+    // งานค้าง = งานแจ้งซ่อมในเว็บนี้ + ใบงานที่ยังไม่ปิดจาก Google Sheet (SHEET.ONLY = ใช้ชีตอย่างเดียว)
+    const local = useSheet() && SHEET.ONLY ? [] : S.jobs.filter(j => j.status === 'open');
+    const open = useSheet() ? local.concat(S.sheet.jobs) : local;
     const zoneStats = new Map();
     const broken = new Map();      // เครื่องที่มีงานค้าง → { open, stopped }
     for (const j of open) {
@@ -294,6 +306,7 @@
         detectNewJobs(jobs);
         setConn(true);
         renderAll();
+        if (useSheet() && !S.sheet.at && !S.sheet.err) refreshSheet();   // รอบแรก: รอรายชื่อเครื่องก่อนค่อยจับคู่ใบงาน
       } catch (err) {
         console.warn('[refresh]', err);
         setConn(false, err.message);
@@ -319,6 +332,94 @@
     pollTimer = null;
   }
 
+  // ---------- ใบงานจาก Google Sheet (ดึงทุก SHEET.POLL_MS) ----------
+  const woFirstSeen = new Map();
+  let sheetTimer = null;
+  let sheetBusy = false;
+  async function refreshSheet() {
+    if (!useSheet() || sheetBusy || !S.machines.length) return;
+    sheetBusy = true;
+    try {
+      const r = await SheetFeed.load();
+      const { jobs, unmatched } = SheetFeed.toJobs(r.rows, S.machines, woFirstSeen);
+      S.sheet = { jobs, unmatched, rows: r.rows.length, at: new Date(), err: null, cols: r.cols, headers: r.headers };
+      detectNewJobs(jobs, true);
+    } catch (err) {
+      console.warn('[sheet]', err);
+      if (err.code === 'LOGIN') {
+        // ยังไม่ได้ล็อกอิน / หมดอายุ → ไม่แสดงใบงาน และเปิดหน้าล็อกอินให้ครั้งเดียว
+        S.sheet = { ...S.sheet, jobs: [], unmatched: [], err: err.message, needLogin: true };
+        if (!S.woLoginAsked) { S.woLoginAsked = true; openWoLogin(); }
+      } else S.sheet = { ...S.sheet, err: err.message || String(err) };
+    } finally {
+      sheetBusy = false;
+      renderAll();
+    }
+  }
+
+  /** หน้าต่างล็อกอินเพื่อดูใบงาน (หน้าผังที่เปิดผ่าน Apps Script) */
+  function openWoLogin() {
+    const dlg = $('#wo-login');
+    if (!dlg || dlg.open) return;
+    $('#wo-login-err').hidden = true;
+    dlg.showModal();
+    setTimeout(() => $('#wo-email').focus(), 50);
+  }
+  async function submitWoLogin(e) {
+    e.preventDefault();
+    const btn = $('#wo-login-btn');
+    const errEl = $('#wo-login-err');
+    const email = $('#wo-email').value.trim();
+    if (!email) { $('#wo-email').focus(); return; }
+    btn.disabled = true;
+    btn.textContent = 'กำลังตรวจสอบ…';
+    const r = await SheetFeed.login(email, $('#wo-pass').value);
+    btn.disabled = false;
+    btn.textContent = 'เข้าสู่ระบบ';
+    if (!r.ok) {
+      errEl.textContent = r.error;
+      errEl.hidden = false;
+      return;
+    }
+    $('#wo-pass').value = '';
+    $('#wo-login').close();
+    S.sheet = { ...S.sheet, err: null, needLogin: false };
+    toast('เข้าสู่ระบบแล้ว กำลังโหลดใบงาน…', 'ok');
+    refreshSheet();
+  }
+  /** ปุ่มใต้ผัง: เข้าสู่ระบบ / ออกจากระบบ */
+  function renderWoLoginBtn() {
+    const b = $('#l-login');
+    if (!b) return;
+    const on = SheetFeed && SheetFeed.viaAppsScript();
+    b.hidden = !on;
+    if (!on) return;
+    const need = !SheetFeed.loggedIn() || S.sheet.needLogin;
+    b.textContent = need ? 'เข้าสู่ระบบเพื่อดูใบงาน' : 'ออกจากระบบ';
+    b.dataset.act = need ? 'login' : 'logout';
+  }
+  function startSheet() {
+    stopSheet();
+    S.sheet = { jobs: [], unmatched: [], rows: 0, at: null, err: null, cols: null };
+    S.woSeen.clear();
+    S.woLoaded = false;
+    if (!useSheet()) return;
+    refreshSheet();
+    sheetTimer = setInterval(refreshSheet, Math.max(15000, SHEET.POLL_MS || 60000));
+  }
+  function stopSheet() {
+    if (sheetTimer) clearInterval(sheetTimer);
+    sheetTimer = null;
+  }
+  /** ข้อความสถานะใบงานจากชีต (แสดงใต้ผัง) */
+  function sheetStatusText() {
+    const s = S.sheet;
+    const t = d => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if (s.err) return `⚠ ${s.err}${s.at ? ` (ข้อมูลล่าสุด ${t(s.at)})` : ''}`;
+    if (!s.at) return 'กำลังโหลดใบงานจาก Google Sheet…';
+    return `ใบงานจาก Google Sheet · อัปเดต ${t(s.at)}`;
+  }
+
   /** ห่อการบันทึกข้อมูล: แสดง error, ดึงข้อมูลใหม่ทุกครั้ง; คืน null ถ้าไม่สำเร็จ */
   async function write(fn, okMsg) {
     S.writes++;
@@ -339,15 +440,20 @@
   // =====================================================================
   //  แจ้งเตือนงานใหม่
   // =====================================================================
-  function detectNewJobs(jobs) {
-    if (!S.loaded) {
-      jobs.forEach(j => S.seen.add(j.id));
-      S.loaded = true;
+  /** หางานที่เพิ่งเข้ามา แล้วแจ้งเตือน (fromSheet = ใบงานจาก Google Sheet ใช้ชุดจำแยก) */
+  function detectNewJobs(jobs, fromSheet = false) {
+    const seen = fromSheet ? S.woSeen : S.seen;
+    const loadedKey = fromSheet ? 'woLoaded' : 'loaded';
+    if (!S[loadedKey]) {
+      jobs.forEach(j => seen.add(j.id));
+      S[loadedKey] = true;
       return;
     }
-    const fresh = jobs.filter(j => !S.seen.has(j.id));
+    // ใช้ชีตอย่างเดียว → งานในเว็บนี้ไม่ต้องเตือน (ไม่แสดงบนผังอยู่แล้ว)
+    if (!fromSheet && useSheet() && SHEET.ONLY) { jobs.forEach(j => seen.add(j.id)); return; }
+    const fresh = jobs.filter(j => !seen.has(j.id));
     if (!fresh.length) return;
-    fresh.forEach(j => S.seen.add(j.id));
+    fresh.forEach(j => seen.add(j.id));
     const alerts = fresh.filter(j => j.status === 'open' && !S.mine.has(j.id));
     if (!alerts.length) return;
 
@@ -362,10 +468,10 @@
     alerts.forEach(j => S.flash.set(j.machine_id, until));
     // เครื่องหยุดสำคัญกว่า ให้แสดงท้ายสุด (ไม่ถูกแจ้งเตือนอื่นดันออก)
     for (const j of [...alerts].sort((a, b) => Number(a.stopped) - Number(b.stopped)).slice(-4)) {
-      const head = isStopped(j) ? 'เครื่องหยุดทำงาน!' : 'แจ้งซ่อมใหม่';
+      const head = isStopped(j) ? 'เครื่องหยุดทำงาน!' : (isSheetJob(j) ? `ใบงานใหม่ ${j.wo || ''}`.trim() : 'แจ้งซ่อมใหม่');
       toast(`${head}\n${machineLabel(X, j.machine_id)} · ${locOf(X, j.machine_id)}\n${j.problem}`,
         isStopped(j) ? 'alert' : 'warn',
-        { ms: 12000, onClick: () => { go('board'); openJob(j.id); } });
+        { ms: 12000, onClick: () => { if (isSheetJob(j)) openMachine(j.machine_id); else { go('board'); openJob(j.id); } } });
     }
   }
 
@@ -630,7 +736,7 @@
     el.hidden = !dup.length;
     if (dup.length) {
       el.innerHTML = `เครื่องนี้มีงานค้างอยู่แล้ว ${dup.length} งาน: ` +
-        dup.map(j => `<b>#${j.id}</b> ${esc(j.problem)}`).join(' · ') +
+        dup.map(j => `<b>${esc(jobNo(j))}</b> ${esc(j.problem)}`).join(' · ') +
         '<br><span class="small">ถ้าเป็นปัญหาเดิม ไม่ต้องแจ้งซ้ำ</span>';
     }
   }
@@ -751,9 +857,11 @@
       </dl>
       ${open.length ? `<h3>งานค้าง (${open.length})</h3>${open.map(j => `
         <div class="m-job">
-          <div class="job-top"><b>#${j.id} ${esc(j.problem)}</b>${stoppedBadge(j)}</div>
-          <div class="job-meta"><span>${ico('clock')}${fmtTime(j.created_at)}</span><span>ค้าง ${fmtDur(Date.now() - Date.parse(j.created_at))}</span>${j.reported_by ? `<span>${ico('user')}${esc(j.reported_by)}</span>` : ''}</div>
-          <button type="button" class="btn ${canClose ? 'btn-ok' : ''} btn-block" data-job="${j.id}">${canClose ? ico('wrench') + 'ดำเนินการ / ปิดงาน' : 'ดูรายละเอียดงาน'}</button>
+          <div class="job-top"><b>${esc(jobNo(j))} ${esc(j.problem)}</b>${stoppedBadge(j)}</div>
+          <div class="job-meta"><span>${ico('clock')}${fmtTime(j.created_at)}</span><span>ค้าง ${fmtDur(Date.now() - Date.parse(j.created_at))}</span>${j.reported_by ? `<span>${ico('user')}${esc(j.reported_by)}</span>` : ''}${isSheetJob(j) && j.sheet_status ? `<span>สถานะ: ${esc(j.sheet_status)}</span>` : ''}</div>
+          ${isSheetJob(j)
+            ? '<p class="muted small" style="margin:0">ใบงานจาก Monitoring Center (Google Sheet) · ปิดงานที่ระบบนั้น</p>'
+            : `<button type="button" class="btn ${canClose ? 'btn-ok' : ''} btn-block" data-job="${j.id}">${canClose ? ico('wrench') + 'ดำเนินการ / ปิดงาน' : 'ดูรายละเอียดงาน'}</button>`}
         </div>`).join('')}` : ''}
       <h3>ประวัติซ่อมล่าสุด</h3>
       ${hist.length ? hist.map(j => `
@@ -792,14 +900,16 @@
     const m = X.machineById.get(j.machine_id);
     const age = Date.now() - Date.parse(j.created_at);
     const ageCls = age >= 4 * 3600e3 ? 'age-bad' : age >= 3600e3 ? 'age-warn' : '';
+    const sheet = isSheetJob(j);
+    if (sheet) canClose = false;             // ใบงานจากชีต ปิดงานที่ Monitoring Center
     return `
-      <article class="job ${isStopped(j) ? 'job-stopped' : ''}" data-id="${j.id}">
+      <article class="job ${isStopped(j) ? 'job-stopped' : ''}" ${sheet ? `data-mid="${j.machine_id}"` : `data-id="${j.id}"`}>
         <div class="job-top">${tag(machineLabel(X, j.machine_id), true, 'tag-lg')}${stoppedBadge(j)}</div>
         <p class="job-sub">${esc([m && m.detail, locOf(X, j.machine_id)].filter(Boolean).join(' · '))}</p>
         <p class="job-problem">${esc(j.problem)}</p>
         ${j.impact ? `<p class="job-impact"><span class="muted">ผลกระทบ:</span> ${esc(j.impact)}</p>` : ''}
         <div class="job-meta">
-          <span>#${j.id}</span>
+          <span>${esc(jobNo(j))}</span>${sheet && j.sheet_status ? `<span>${esc(j.sheet_status)}</span>` : ''}
           <span class="${ageCls}">${ico('clock')}ค้าง ${fmtDur(age)}</span>
           <span>${fmtTime(j.created_at)}</span>
           ${j.reported_by ? `<span>${ico('user')}${esc(j.reported_by)}</span>` : ''}
@@ -1072,14 +1182,19 @@
     $('#l-side-sub').textContent = alerts.length
       ? `${sum.stopped ? `หยุด ${sum.stopped} · ` : ''}${all ? 'ทุกโรง' : plantName(S.lPlant)}`
       : '';
-    const rows = alerts.map(a => [a.m.id, a.stopped, a.jobs.length, a.latest.problem, Math.floor((now - a.since) / 60000)]);
+    const rows = alerts.map(a => [a.m.id, a.stopped, a.jobs.length, a.latest.problem, a.latest.wo, Math.floor((now - a.since) / 60000)]);
+    if (useSheet()) {
+      $('#l-update').textContent = sheetStatusText();
+      $('#l-update').classList.toggle('err', !!S.sheet.err);
+    }
+    renderWoLoginBtn();
     patch($('#l-alerts'), 'lalerts', [rows, S.lPlant], () => alerts.length ? alerts.map(a => {
       const age = now - a.since;
       const more = a.jobs.length > 1 ? ` (+${a.jobs.length - 1} งาน)` : '';
       return `<button type="button" class="l-alert ${a.stopped ? 'stop' : ''}" data-mid="${a.m.id}" title="แสดงตำแหน่งบนผัง">
         <span class="l-alert-top">${tag(a.m.name, true)}${a.stopped ? `<span class="badge badge-danger">${ico('stop')}หยุด</span>` : ''}<span class="l-age ${age > 4 * 3600e3 ? 'age-bad' : ''}">ค้าง ${fmtDur(age)}</span></span>
         <span class="l-alert-loc">${esc(locText(X, a.m))}</span>
-        <span class="l-alert-prob">${esc(a.latest.problem)}${more}</span>
+        <span class="l-alert-prob">${isSheetJob(a.latest) && a.latest.wo ? `<b>${esc(a.latest.wo)}</b> ` : ''}${esc(a.latest.problem)}${more}</span>
       </button>`;
     }).join('') : `<div class="l-empty">${ico('check-circle')}<b>ทุกเครื่องปกติ</b><span>ไม่มีงานซ่อมค้าง${all ? '' : `ใน${esc(plantName(S.lPlant))}`}</span></div>`);
 
@@ -1193,6 +1308,7 @@
     setConn(true);
     refresh({ meta: true });
     startPolling();
+    startSheet();
   }
 
   function renderAllJobs(X) {
@@ -1336,12 +1452,45 @@
     });
   }
 
+  /** สรุปผลดึงใบงานจากชีต (หน้าตั้งค่า) */
+  function sheetSummary(sh, r) {
+    if (!sh) return '';
+    if (sh.err) return `<p class="sheet-res bad">${ico('alert')}${esc(sh.err)}</p>`;
+    if (!sh.at && !r) return '<p class="muted small">กำลังโหลด…</p>';
+    const labels = { wo: 'เลขใบงาน', code: 'รหัสเครื่อง', status: 'สถานะ', time: 'เวลาแจ้ง', problem: 'อาการ', stopped: 'เครื่องหยุด', line: 'ไลน์' };
+    const cols = sh.cols && sh.headers
+      ? Object.entries(labels).map(([k, l]) => `<li><span>${l}</span><b>${sh.cols[k] >= 0 ? esc(sh.headers[sh.cols[k]]) : '<span class="muted">ไม่พบ</span>'}</b></li>`).join('') : '';
+    const machines = new Set(sh.jobs.map(j => j.machine_id)).size;
+    const miss = sh.unmatched.slice(0, 15).map(([c, n]) => `<code>${esc(c)}</code>${n > 1 ? `×${n}` : ''}`).join(' ');
+    return `
+      <p class="sheet-res ok">${ico('check-circle')}อ่านชีตได้ ${sh.rows} แถว · ใบงานค้าง ${sh.jobs.length} ใบ · เครื่องเสียบนผัง ${machines} เครื่อง</p>
+      ${cols ? `<ul class="sheet-cols">${cols}</ul>` : ''}
+      ${sh.unmatched.length ? `<p class="small">หารหัสเครื่องบนผังไม่เจอ ${sh.unmatched.length} รหัส (ใบงานเหล่านี้ไม่แสดงบนผัง): ${miss}${sh.unmatched.length > 15 ? ' …' : ''}</p>` : ''}`;
+  }
+
   function renderSettings(force = false) {
     const s = Store.resolveSettings();
     const allow = CFG.ALLOW_SETTINGS_OVERRIDE;
-    patch($('#settings-body'), 'settings', [s, store.mode, allow], () => `
+    const sh = SheetFeed ? SheetFeed.settings() : { url: '', tab: '' };
+    const shState = [sh, S.sheet.at && S.sheet.at.getTime(), S.sheet.err, S.sheet.jobs.length, S.sheet.unmatched.length];
+    patch($('#settings-body'), 'settings', [s, store.mode, allow, shState], () => `
+      <h2>ใบงานจาก Google Sheet (Monitoring Center)</h2>
+      <p class="muted small" style="margin-top:0">เครื่องที่มีใบงานยังไม่ปิดในชีต จะเป็นสีแดงบนผัง · ชีตต้องแชร์แบบ "ทุกคนที่มีลิงก์ดูได้" หรือ "เผยแพร่ไปยังเว็บ"</p>
+      <label class="field"><span>ลิงก์ Google Sheet</span>
+        <input id="set-sheet" type="url" inputmode="url" value="${esc(sh.url)}" placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=0"></label>
+      <label class="field"><span>ชื่อแท็บใบงาน (ไม่บังคับ)</span>
+        <input id="set-sheet-tab" value="${esc(sh.tab)}" placeholder="เว้นว่าง = แท็บในลิงก์"></label>
+      <div class="btn-row">
+        <button type="button" class="btn" data-act="sheet-test">${ico('plug')}ทดสอบดึงข้อมูล</button>
+        <button type="button" class="btn btn-primary" data-act="sheet-save">${ico('save')}บันทึกและใช้งาน</button>
+        ${useSheet() ? `<button type="button" class="btn btn-danger" data-act="sheet-off">${ico('x')}เลิกใช้ชีต</button>` : ''}
+      </div>
+      <div id="sheet-result">${useSheet() ? sheetSummary(S.sheet) : ''}</div>
+      <p class="muted small" style="margin:10px 0 0">ค่านี้มีผลเฉพาะเบราว์เซอร์เครื่องนี้ · ค่าเริ่มต้นของทุกเครื่องตั้งที่ <code>js/config.js</code> (SHEET.URL)</p>
+      <hr>
       ${allow ? `
-      <h2>แหล่งข้อมูล</h2>
+
+      <h2>แหล่งข้อมูลงานแจ้งซ่อม</h2>
       <fieldset class="field" aria-label="แหล่งข้อมูล">
         <div class="toggle-2">
           <label class="opt opt-plain"><input type="radio" name="mode" value="local"${s.mode !== 'api' ? ' checked' : ''}><span>${ico('device')}ทดสอบในเครื่องนี้</span></label>
@@ -1656,6 +1805,17 @@
       syncLayoutSide();
     });
     $('#l-full').addEventListener('click', toggleLayoutFull);
+    // ล็อกอินเพื่อดูใบงาน (หน้าผังผ่าน Apps Script)
+    $('#wo-login-form').addEventListener('submit', submitWoLogin);
+    $$('#wo-login [data-close]').forEach(b => b.addEventListener('click', () => $('#wo-login').close()));
+    $('#l-login').addEventListener('click', e => {
+      if (e.currentTarget.dataset.act === 'logout') {
+        SheetFeed.logout();
+        S.sheet = { jobs: [], unmatched: [], rows: 0, at: null, err: 'ออกจากระบบแล้ว', needLogin: true, cols: null };
+        renderAll();
+        toast('ออกจากระบบแล้ว', 'ok');
+      } else openWoLogin();
+    });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && $('#layout-card').classList.contains('is-full') && !document.querySelector('dialog[open]')) exitLayoutFull();
     });
@@ -1812,6 +1972,8 @@
 
     // ----- board -----
     const onJobClick = e => {
+      const mid = e.target.closest('[data-mid]');
+      if (mid) { openMachine(Number(mid.dataset.mid)); return; }   // ใบงานจากชีต → ดูเครื่อง
       const el = e.target.closest('[data-id]');
       if (el) openJob(Number(el.dataset.id));
     };
@@ -1980,6 +2142,40 @@
       const body = $('#settings-body');
       if (act === 'sound-normal') { Sound.unlock(); Sound.play('normal'); }
       else if (act === 'sound-stopped') { Sound.unlock(); Sound.play('stopped'); }
+      else if (act === 'sheet-test' || act === 'sheet-save') {
+        const url = $('#set-sheet', body).value.trim();
+        const tab = $('#set-sheet-tab', body).value.trim();
+        if (!/^https?:\/\//i.test(url)) {
+          toast('กรุณาใส่ลิงก์ Google Sheet (ขึ้นต้นด้วย https://)', 'error');
+          $('#set-sheet', body).focus();
+          return;
+        }
+        if (act === 'sheet-save') {
+          SheetFeed.save({ url, tab });
+          startSheet();
+          renderSettings(true);
+          toast('ใช้ใบงานจาก Google Sheet แล้ว\nเครื่องที่มีใบงานค้างจะเป็นสีแดงบนผัง', 'ok', { ms: 5000 });
+          return;
+        }
+        b.disabled = true;
+        const out = $('#sheet-result', body);
+        out.innerHTML = '<p class="muted small">กำลังดึงข้อมูล…</p>';
+        try {
+          const r = await SheetFeed.load({ url, tab });
+          const { jobs, unmatched } = SheetFeed.toJobs(r.rows, S.machines);
+          out.innerHTML = sheetSummary({ jobs, unmatched, rows: r.rows.length, at: new Date(), err: null, cols: r.cols, headers: r.headers }, true);
+        } catch (err) {
+          out.innerHTML = sheetSummary({ err: err.message || String(err) });
+        } finally {
+          b.disabled = false;
+        }
+      } else if (act === 'sheet-off') {
+        SheetFeed.save({ url: '', tab: '' });
+        startSheet();
+        renderSettings(true);
+        renderAll();
+        toast('เลิกใช้ใบงานจาก Google Sheet แล้ว', 'ok');
+      }
       else if (act === 'test-api') {
         const url = $('#set-api', body).value.trim();
         b.disabled = true;
@@ -2067,6 +2263,7 @@
   function logout() {
     Auth.logout();
     stopPolling();
+    stopSheet();
     S.user = null;
     S.view = null;
     if ($('#job-dialog').open) $('#job-dialog').close();
@@ -2091,11 +2288,12 @@
     route();
     refresh({ meta: true });
     startPolling();
+    startSheet();
   }
 
   function init() {
     const qs = new URLSearchParams(location.search);
-    S.embed = qs.get('embed') === 'layout';
+    S.embed = qs.get('embed') === 'layout' || CFG.EMBED === 'layout';     // CFG.EMBED: หน้าผังที่รันใน Apps Script
     if (PLANTS.some(p => p.id === qs.get('plant'))) S.lPlant = qs.get('plant');     // ?plant=1 เปิดผังโรงเดียว
     applyTheme(currentTheme());
     let side = null;
