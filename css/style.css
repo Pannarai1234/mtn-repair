@@ -33,6 +33,10 @@
   --m-ok: #86dbad;
   --m-ok-line: #2c9a66;
   --m-ok-text: #0a3b25;
+  --m-pm: #f6c533;          /* กำลังทำ PM = เหลือง */
+  --m-pm-line: #a77a00;
+  --m-pm-text: #3d2c00;
+  --m-pm-soft: #fff6d6;
   --m-bad: #de3b40;
   --m-bad-2: #f79a9d;
   --m-bad-line: #95181d;
@@ -86,6 +90,10 @@
   --m-ok: #1f7d51;
   --m-ok-line: #4fca90;
   --m-ok-text: #e2f9ec;
+  --m-pm: #e3b21e;
+  --m-pm-line: #ffe17a;
+  --m-pm-text: #2a1e00;
+  --m-pm-soft: #3a3110;
   --m-bad: #e0444a;
   --m-bad-2: #8d1b21;
   --m-bad-line: #ff9c9f;
@@ -482,6 +490,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .m.bad .m-box { fill: var(--m-bad); stroke: var(--m-bad-line); stroke-width: 1.6; animation: m-blink 1.4s ease-in-out infinite; }
 .m.bad .m-code, .m.bad .m-det { fill: #fff; opacity: 1; }
 .m.stop .m-box { stroke: #fff; stroke-width: 2; animation: m-blink-stop .7s ease-in-out infinite; }
+/* กำลังทำ PM = เหลือง (ไม่กะพริบ) */
+.m.pm .m-box { fill: var(--m-pm); stroke: var(--m-pm-line); stroke-width: 1.6; }
+.m.pm .m-code, .m.pm .m-det { fill: var(--m-pm-text); opacity: 1; }
 .m.dim { opacity: .28; }
 .m.bad.dim { opacity: .6; }
 .m.sel .m-box { stroke: var(--primary); stroke-width: 3; }
@@ -497,6 +508,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .pin-dot { fill: var(--m-bad); stroke: #fff; stroke-width: 2; animation: pin-pulse 1.2s ease-in-out infinite; }
 .pin.stop .pin-dot { animation-duration: .6s; }
 .pin.stop .pin-bg { animation: m-blink-stop .7s ease-in-out infinite; }
+.pin.pm .pin-bg, .pin.pm .pin-dot { fill: var(--m-pm); stroke: var(--m-pm-line); animation: none; }
+.pin.pm .pin-text { fill: var(--m-pm-text); }
 
 @keyframes m-blink { 50% { fill: var(--m-bad-2); } }
 @keyframes m-blink-stop { 0%, 100% { fill: var(--stop-a); } 50% { fill: var(--stop-b); } }
@@ -550,6 +563,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .m-banner.ok { background: var(--ok-soft); color: var(--ok); }
 .m-banner.bad { background: var(--danger-solid); color: #fff; }
 .m-job { border: 1px solid var(--danger-line); background: var(--danger-soft); border-radius: 16px; padding: 14px; margin-bottom: 10px; }
+.m-job.pm { border-color: var(--m-pm-line); background: var(--m-pm-soft); }
 
 /* ---------- การ์ดงาน ---------- */
 .job-list { display: flex; flex-direction: column; gap: 12px; }
@@ -648,6 +662,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 #l-update { margin-left: auto; }
 #l-update.err { color: var(--danger); font-weight: 600; }
 .lg-stop { background: var(--stop-a); border: 1.5px solid var(--m-bad-line); }
+.lg-pm { background: var(--m-pm); border: 1.5px solid var(--m-pm-line); }
+.badge-pm { background: var(--m-pm); color: var(--m-pm-text); }
+.tag-pm { background: var(--m-pm); border-color: var(--m-pm-line); color: var(--m-pm-text); }
+.m-banner.pm { background: var(--m-pm); color: var(--m-pm-text); }
+.l-alert.pm { border-color: var(--m-pm-line); border-left-color: var(--m-pm); background: var(--m-pm-soft); }
+.part-name .pp { fill: var(--m-pm-line); }
 
 /* รายการเครื่องเสีย: ปกติเป็นการ์ดใต้ผัง (ผังได้พื้นที่เต็ม) · ตอนเต็มจอเป็นปุ่มลอยมุมขวาบนของผัง กดเพื่อกาง */
 .l-side { display: flex; flex-direction: column; min-height: 0; }
@@ -727,6 +747,8 @@ html.no-scroll, html.no-scroll body { overflow: hidden; }
   background: var(--danger-solid); color: #fff; font: inherit; font-weight: 700; animation: pin-out 1.4s ease-in-out infinite;
 }
 .pmap-out button.stop { background: var(--stop-a); animation-duration: .7s; }
+.pmap-out button.pm { background: var(--m-pm); color: var(--m-pm-text); box-shadow: inset 0 0 0 1.5px var(--m-pm-line); animation: none; }
+.pmap-out.pm { border-color: var(--m-pm-line); color: var(--m-pm-line); }
 @keyframes pin-out { 50% { filter: brightness(1.25); } }
 .pmap-bar button[aria-pressed="true"] { background: var(--primary-soft); }
 
