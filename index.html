@@ -235,6 +235,7 @@
                 <div class="seg" id="md-status" role="group" aria-label="กรองสถานะเครื่อง">
                   <button type="button" data-v="all" class="on">ทั้งหมด</button>
                   <button type="button" data-v="bad">เสีย</button>
+                  <button type="button" data-v="pm">PM</button>
                   <button type="button" data-v="ok">ปกติ</button>
                 </div>
               </div>
@@ -317,6 +318,7 @@
             <span><i class="lg lg-ok"></i>ปกติ / ปิดงานแล้ว <b id="l-ok">0</b></span>
             <span><i class="lg lg-bad"></i>เสีย (มีงานค้าง) <b id="l-bad">0</b></span>
             <span><i class="lg lg-stop"></i>เครื่องหยุด <b id="l-stop">0</b></span>
+            <span><i class="lg lg-pm"></i>กำลังทำ PM <b id="l-pm">0</b></span>
             <span class="muted" id="l-hint"></span>
             <span class="muted small" id="l-update"></span>
             <button type="button" class="btn btn-soft btn-sm" id="l-login" hidden></button>
@@ -332,6 +334,7 @@
               <div class="seg" id="l-status" role="group" aria-label="กรองสถานะเครื่อง">
                 <button type="button" data-v="all" class="on">ทั้งหมด</button>
                 <button type="button" data-v="bad">เสีย</button>
+                <button type="button" data-v="pm">PM</button>
                 <button type="button" data-v="ok">ปกติ</button>
               </div>
               <input type="search" id="l-q" class="search" placeholder="รหัสหรือรายละเอียด" aria-label="ค้นหาเครื่องจักร">

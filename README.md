@@ -47,13 +47,18 @@ worker/wrangler.toml  ค่าตั้ง Worker + D1
 
 ให้เครื่องบนผังเป็นสีแดงตามใบงานจริงในชีต (ดึงทุก 1 นาที) ทำได้ 2 แบบ
 
-### แบบ A (ใช้อยู่): หน้าผังผ่าน Apps Script ของ Monitoring Center — ต้อง Login ก่อนเห็นใบงาน
+### แบบ A (ใช้อยู่): หน้าผังผ่าน Apps Script ของ Monitoring Center
 
 ชีตใบงานเป็นส่วนตัว (ไม่ต้องแชร์) หน้าผังเปิดผ่าน Web app เดิมของ Monitoring Center ด้วย `?page=layout`
-และขอข้อมูลใบงานได้เฉพาะคนที่ Login ด้วย Email/รหัสผ่านในชีต **AuthorizedUsers** (บัญชีเดียวกับ Dashboard)
+การ Login ทำตามสวิตช์ `REQUIRE_LOGIN` ใน `AppWeb.gs` ตัวเดียวกับ Dashboard
+- `false` = เปิดดูได้เลย (ใครมีลิงก์ก็เห็นใบงาน)
+- `true` = ต้อง Login ด้วย Email/รหัสผ่านในชีต **AuthorizedUsers** ก่อน (จำไว้ 30 วันต่อเครื่อง)
 
 ไฟล์ในโฟลเดอร์ `apps-script/` (วางในโปรเจกต์ Apps Script ของ Monitoring Center)
-- `Layout.gs` — `layoutPage_()` และ `getLayoutWorkOrders(token)` ส่งเฉพาะใบงานที่ STATUS ไม่ใช่ COMPLETE
+- `LayoutPage.gs` — `layoutPage_()` และ `getLayoutWorkOrders(token)` ตัวกรองอยู่บรรทัดบนของไฟล์
+  - `LAYOUT_START_DATE` = แสดงเฉพาะใบงานที่แจ้งตั้งแต่วันนี้ (ตอนนี้ `'2026-11-27'`)
+  - `LAYOUT_STATUSES` = สถานะที่แสดง (ตอนนี้ `['MACHINE STOP']` ใส่ `'REPAIRING'` เพิ่มได้)
+  - `LAYOUT_SHOW_PM` = แสดงงาน PM เป็นสีเหลือง (ใบงานที่ CATAGORY หรือ EFFECT TYPE = PM ทุกสถานะที่ยังไม่ COMPLETE) พอ COMPLETE เครื่องกลับเป็นสีเขียว · ถ้าเครื่องเดียวกันมีงานเสียด้วย จะแสดงสีแดง
 - `Layout.html` — หน้าเปล่าที่โหลดตัวผังจาก GitHub Pages (`js/gas-loader.js`) แก้เว็บแล้วอัปขึ้น GitHub ก็พอ ไม่ต้องแก้ Apps Script
 - ใน `doGet` ของ `AppWeb.gs` เพิ่มบรรทัด `if (page === 'layout') return layoutPage_();` ก่อนส่วน LIFF Pages
 - แก้แล้ว **Deploy → Manage deployments → แก้ไข (ดินสอ) → Version: New version → Deploy** ลิงก์เดิมจะใช้โค้ดใหม่
