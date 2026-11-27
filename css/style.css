@@ -646,6 +646,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 #layout-map.pmap { height: 100%; min-height: 0; }
 #view-layout .legend { margin: 0; }
 #l-update { margin-left: auto; }
+#l-update.err { color: var(--danger); font-weight: 600; }
 .lg-stop { background: var(--stop-a); border: 1.5px solid var(--m-bad-line); }
 
 /* รายการเครื่องเสีย: ปกติเป็นการ์ดใต้ผัง (ผังได้พื้นที่เต็ม) · ตอนเต็มจอเป็นปุ่มลอยมุมขวาบนของผัง กดเพื่อกาง */
@@ -728,6 +729,16 @@ html.no-scroll, html.no-scroll body { overflow: hidden; }
 .pmap-out button.stop { background: var(--stop-a); animation-duration: .7s; }
 @keyframes pin-out { 50% { filter: brightness(1.25); } }
 .pmap-bar button[aria-pressed="true"] { background: var(--primary-soft); }
+
+/* ผลทดสอบดึงใบงานจาก Google Sheet (หน้าตั้งค่า) */
+#sheet-result { margin-top: 14px; }
+.sheet-res { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 10px 14px; border-radius: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.sheet-res.ok { background: var(--ok-soft); color: var(--ok); }
+.sheet-res.bad { background: var(--danger-soft); color: var(--danger); }
+.sheet-res .ico { flex: none; }
+.sheet-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; margin: 0 0 10px; padding: 0; list-style: none; font-size: .9rem; }
+.sheet-cols li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px; border-radius: 10px; background: var(--surface-2); }
+.sheet-cols li span { color: var(--muted); }
 
 /* โหมดฝังในเว็บอื่น (?embed=layout) */
 .embed #view-app { display: block; }
