@@ -199,7 +199,14 @@
     const open = useSheet() ? local.concat(S.sheet.jobs) : local;
     const zoneStats = new Map();
     const broken = new Map();      // เครื่องที่มีงานค้าง → { open, stopped }
+    const pm = new Map();          // เครื่องที่กำลังทำ PM (และไม่ได้เสีย) → { open }
     for (const j of open) {
+      if (j.pm) {                  // งาน PM: สีเหลือง ไม่นับเป็นเครื่องเสีย
+        const p = pm.get(j.machine_id) || { open: 0 };
+        p.open++;
+        pm.set(j.machine_id, p);
+        continue;
+      }
       const m = machineById.get(j.machine_id);
       let b = broken.get(j.machine_id);
       if (!b) broken.set(j.machine_id, (b = { open: 0, stopped: 0 }));
@@ -212,13 +219,14 @@
       s.open++;
       if (isStopped(j)) s.stopped++;
     }
+    for (const id of broken.keys()) pm.delete(id);          // เสียด้วย → แสดงสีแดงก่อน
     const stoppedMachines = new Set(open.filter(isStopped).map(j => j.machine_id));
     const now = Date.now();
     const flash = new Set();
     for (const [mid, until] of S.flash) {
       if (until > now) flash.add(mid); else S.flash.delete(mid);
     }
-    return { zoneById, machineById, open, zoneStats, broken, stoppedMachines, flash };
+    return { zoneById, machineById, open, zoneStats, broken, pm, stoppedMachines, flash };
   }
 
   const machineLabel = (X, id) => {
@@ -728,7 +736,7 @@
     if (!pickMap || !$('#pick-dialog').open) return;
     patch($('#pick-plants'), 'pickplants', [S.pickPlant], () => plantTabs(S.pickPlant), { keepFocus: true });
     pickMap.setPlant(plantById(S.pickPlant));
-    pickMap.render({ zones: S.zones, machines: S.machines, broken: X.broken, stats: X.zoneStats });
+    pickMap.render({ zones: S.zones, machines: S.machines, broken: X.broken, pm: X.pm, stats: X.zoneStats });
   }
 
   function renderMachineWarn(X) {
@@ -746,13 +754,13 @@
   // ---------- ติดตามงาน ----------
   /** นับเครื่องต่อโรง: { total, bad, stopped } */
   function plantCounts(X) {
-    const out = new Map(PLANTS.map(p => [p.id, { total: 0, bad: 0, stopped: 0 }]));
+    const out = new Map(PLANTS.map(p => [p.id, { total: 0, bad: 0, stopped: 0, pm: 0 }]));
     for (const m of S.machines) {
       const c = out.get(m.plant);
       if (!c) continue;
       c.total++;
       const b = X.broken.get(m.id);
-      if (b) { c.bad++; if (b.stopped) c.stopped++; }
+      if (b) { c.bad++; if (b.stopped) c.stopped++; } else if (X.pm && X.pm.has(m.id)) c.pm++;
     }
     return out;
   }
@@ -778,7 +786,7 @@
     const all = S.plant === 'all';
     $('#board-overview').hidden = !all;
     $('#board-map').hidden = all;
-    const view = { zones: S.zones, machines: S.machines, broken: X.broken, stats: X.zoneStats, flash: X.flash, filterZone: S.zoneFilter };
+    const view = { zones: S.zones, machines: S.machines, broken: X.broken, pm: X.pm, stats: X.zoneStats, flash: X.flash, filterZone: S.zoneFilter };
     if (all) {
       for (const o of overview) {
         const c = counts.get(o.plant.id);
@@ -814,25 +822,31 @@
     if (!$('#machine-details').open) return;
     const list = S.machines.filter(m => (S.plant === 'all' || m.plant === S.plant)
       && (S.zoneFilter == null || m.zone_id === S.zoneFilter)
-      && (S.mdStatus === 'all' || (S.mdStatus === 'bad') === X.broken.has(m.id)));
+      && stateFilter(S.mdStatus, mState(X, m.id)));
     const order = new Map(S.zones.map((z, i) => [z.id, i]));
-    list.sort((a, b) => (X.broken.has(b.id) - X.broken.has(a.id))
+    list.sort((a, b) => (mState(X, b.id) - mState(X, a.id))
       || ((order.get(a.zone_id) ?? 999) - (order.get(b.zone_id) ?? 999)) || byName(a, b));
-    patch($('#md-list'), 'mdlist', [list, S.zones, [...X.broken]], () => list.length ? `
+    patch($('#md-list'), 'mdlist', [list, S.zones, [...X.broken], [...X.pm.keys()]], () => list.length ? `
       <div class="table-wrap"><table class="jobs-table md-table">
         <thead><tr><th>รหัส</th><th>รายละเอียด</th><th>โรง / โซน</th><th>สถานะ</th></tr></thead>
         <tbody>${list.map(m => {
           const b = X.broken.get(m.id);
           return `<tr data-mid="${m.id}">
-            <td data-label="รหัส"><span>${tag(m.name, b)}</span></td>
+            <td data-label="รหัส"><span>${mTag(X, m)}</span></td>
             <td data-label="รายละเอียด" class="${m.detail ? '' : 'empty-cell'}">${esc(m.detail) || '–'}</td>
             <td data-label="โรง / โซน">${esc(locText(X, m))}</td>
-            <td data-label="สถานะ"><span>${machineBadge(b)}</span></td></tr>`;
+            <td data-label="สถานะ"><span>${machineBadge(b, X.pm.get(m.id))}</span></td></tr>`;
         }).join('')}</tbody>
       </table></div>` : '<div class="empty">ไม่มีเครื่องตามเงื่อนไขนี้</div>');
   }
 
-  function machineBadge(b) {
+  /** สถานะเครื่อง: 2 = เสีย · 1 = กำลังทำ PM · 0 = ปกติ (ใช้เรียง/กรองรายการ) */
+  const mState = (X, id) => (X.broken.has(id) ? 2 : X.pm && X.pm.has(id) ? 1 : 0);
+  const stateFilter = (f, s) => f === 'all' || (f === 'bad' ? s === 2 : f === 'pm' ? s === 1 : s === 0);
+  const mTag = (X, m) => tag(m.name, X.broken.get(m.id), mState(X, m.id) === 1 ? 'tag-pm' : '');
+
+  function machineBadge(b, pm) {
+    if (!b && pm) return '<span class="badge badge-pm badge-dot">กำลังทำ PM</span>';
     if (!b) return '<span class="badge badge-ok badge-dot">ปกติ</span>';
     return b.stopped
       ? `<span class="badge badge-danger">${ico('stop')}เสีย หยุดทำงาน</span>`
@@ -851,16 +865,16 @@
     const canClose = !S.embed && Auth.can('job:close');
     $('#md-name').innerHTML = tag(m.name, b, 'tag-lg');
     $('#md-body').innerHTML = `
-      <div class="m-banner ${b ? 'bad' : 'ok'}">${b ? (b.stopped ? ico('stop') + 'เสีย เครื่องหยุดทำงาน' : ico('alert') + 'เสีย มีงานค้าง') : ico('check-circle') + 'ปกติ'}</div>
+      <div class="m-banner ${b ? 'bad' : X.pm.has(id) ? 'pm' : 'ok'}">${b ? (b.stopped ? ico('stop') + 'เสีย เครื่องหยุดทำงาน' : ico('alert') + 'เสีย มีงานค้าง') : X.pm.has(id) ? ico('wrench') + 'กำลังทำ PM (บำรุงรักษาตามแผน)' : ico('check-circle') + 'ปกติ'}</div>
       <dl class="dl">
         <dt>รายละเอียด</dt><dd>${esc(m.detail) || '–'}</dd>
         <dt>โรง</dt><dd>${esc(plantName(m.plant))}</dd>
         <dt>โซน</dt><dd>${esc(z ? z.name : 'ไม่ระบุโซน')}</dd>
       </dl>
       ${open.length ? `<h3>งานค้าง (${open.length})</h3>${open.map(j => `
-        <div class="m-job">
-          <div class="job-top"><b>${esc(jobNo(j))} ${esc(j.problem)}</b>${stoppedBadge(j)}</div>
-          <div class="job-meta"><span>${ico('clock')}${fmtTime(j.created_at)}</span><span>ค้าง ${fmtDur(Date.now() - Date.parse(j.created_at))}</span>${j.reported_by ? `<span>${ico('user')}${esc(j.reported_by)}</span>` : ''}${isSheetJob(j) && j.sheet_status ? `<span>สถานะ: ${esc(j.sheet_status)}</span>` : ''}</div>
+        <div class="m-job${j.pm ? ' pm' : ''}">
+          <div class="job-top"><b>${esc(jobNo(j))} ${esc(j.problem)}</b>${j.pm ? '<span class="badge badge-pm">PM</span>' : stoppedBadge(j)}</div>
+          <div class="job-meta"><span>${ico('clock')}${fmtTime(j.created_at)}</span><span>${j.pm ? 'เริ่ม' : 'ค้าง'} ${fmtDur(Date.now() - Date.parse(j.created_at))}</span>${j.reported_by ? `<span>${ico('user')}${esc(j.reported_by)}</span>` : ''}${isSheetJob(j) && j.sheet_status ? `<span>สถานะ: ${esc(j.sheet_status)}</span>` : ''}</div>
           ${isSheetJob(j)
             ? '<p class="muted small" style="margin:0">ใบงานจาก Monitoring Center (Google Sheet) · ปิดงานที่ระบบนั้น</p>'
             : `<button type="button" class="btn ${canClose ? 'btn-ok' : ''} btn-block" data-job="${j.id}">${canClose ? ico('wrench') + 'ดำเนินการ / ปิดงาน' : 'ดูรายละเอียดงาน'}</button>`}
@@ -1129,19 +1143,23 @@
         const b = X.broken.get(m.id);
         const z = X.zoneById.get(m.zone_id);
         return `<tr data-mid="${m.id}">
-          <td data-label="รหัส"><span>${tag(m.name, b)}</span></td>
+          <td data-label="รหัส"><span>${mTag(X, m)}</span></td>
           <td data-label="รายละเอียด" class="${m.detail ? '' : 'empty-cell'}">${esc(m.detail) || '–'}</td>
           <td data-label="${loc}">${esc(withPlant ? locText(X, m) : (z ? z.name : 'ไม่ระบุโซน'))}</td>
-          <td data-label="สถานะ"><span>${machineBadge(b)}</span></td></tr>`;
+          <td data-label="สถานะ"><span>${machineBadge(b, X.pm && X.pm.get(m.id))}</span></td></tr>`;
       }).join('')}</tbody></table></div>`;
   }
 
-  /** รายการเครื่องเสียข้างผัง: เครื่องหยุดก่อน แล้วเรียงตามเวลาที่ค้างนานสุด */
-  function layoutAlerts(X, inScope) {
+  /**
+   * รายการข้างผัง: เครื่องหยุดก่อน แล้วเรียงตามเวลาที่ค้างนานสุด
+   * pm = true → เฉพาะเครื่องที่กำลังทำ PM (ไม่ได้เสีย) · false → เฉพาะเครื่องเสีย
+   */
+  function layoutAlerts(X, inScope, pm = false) {
     const byMachine = new Map();
     for (const j of X.open) {
       const m = X.machineById.get(j.machine_id);
       if (!m || !inScope(m)) continue;
+      if (pm ? !(j.pm && X.pm.has(m.id)) : !X.broken.has(m.id) || j.pm) continue;
       let a = byMachine.get(m.id);
       if (!a) byMachine.set(m.id, (a = { m, jobs: [], stopped: false, since: Infinity, latest: null }));
       a.jobs.push(j);
@@ -1160,15 +1178,16 @@
     if (S.lZone != null && !X.zoneById.has(S.lZone)) S.lZone = null;
     syncLayoutSide();
     const sum = [...counts].filter(([id]) => all || id === S.lPlant)
-      .reduce((a, [, c]) => ({ total: a.total + c.total, bad: a.bad + c.bad, stopped: a.stopped + c.stopped }), { total: 0, bad: 0, stopped: 0 });
+      .reduce((a, [, c]) => ({ total: a.total + c.total, bad: a.bad + c.bad, stopped: a.stopped + c.stopped, pm: a.pm + c.pm }), { total: 0, bad: 0, stopped: 0, pm: 0 });
     const allBad = [...counts.values()].reduce((a, c) => a + c.bad, 0);
     patch($('#l-plant'), 'lplant', [S.lPlant, [...counts]],
       () => segBtn('all', 'รวมทุกโรง', all, allBad) + plantTabs(S.lPlant, counts), { keepFocus: true });
     layoutMap.setPlant(all ? PLANTS : plantById(S.lPlant));
-    layoutMap.render({ zones: S.zones, machines: S.machines, broken: X.broken, stats: X.zoneStats, flash: X.flash, filterZone: S.lZone });
-    $('#l-ok').textContent = sum.total - sum.bad;
+    layoutMap.render({ zones: S.zones, machines: S.machines, broken: X.broken, pm: X.pm, stats: X.zoneStats, flash: X.flash, filterZone: S.lZone });
+    $('#l-ok').textContent = sum.total - sum.bad - sum.pm;
     $('#l-bad').textContent = sum.bad;
     $('#l-stop').textContent = sum.stopped;
+    $('#l-pm').textContent = sum.pm;
     $('#l-hint').textContent = all
       ? 'แตะชื่อโรงเพื่อเปิดผังโรงนั้น · แตะเครื่องเพื่อดูรายละเอียด'
       : 'แตะเครื่องเพื่อดูรายละเอียด · แตะชื่อโซนเพื่อกรองรายการ';
@@ -1177,14 +1196,15 @@
     // เครื่องเสีย (ข้างผัง)
     const inScope = m => all || m.plant === S.lPlant;
     const alerts = layoutAlerts(X, inScope);
+    const pmList = layoutAlerts(X, inScope, true);          // กำลังทำ PM (แสดงต่อท้าย สีเหลือง)
     const now = Date.now();
     const bc = $('#l-bad-count');
     bc.textContent = alerts.length;
     bc.classList.toggle('zero', !alerts.length);
-    $('#l-side-sub').textContent = alerts.length
-      ? `${sum.stopped ? `หยุด ${sum.stopped} · ` : ''}${all ? 'ทุกโรง' : plantName(S.lPlant)}`
+    $('#l-side-sub').textContent = alerts.length || pmList.length
+      ? [sum.stopped ? `หยุด ${sum.stopped}` : '', pmList.length ? `PM ${pmList.length}` : '', all ? 'ทุกโรง' : plantName(S.lPlant)].filter(Boolean).join(' · ')
       : '';
-    const rows = alerts.map(a => [a.m.id, a.stopped, a.jobs.length, a.latest.problem, a.latest.wo, Math.floor((now - a.since) / 60000)]);
+    const rows = alerts.concat(pmList).map(a => [a.m.id, a.stopped, a.jobs.length, a.latest.problem, a.latest.wo, Math.floor((now - a.since) / 60000)]);
     if (useSheet()) {
       $('#l-update').textContent = sheetStatusText();
       $('#l-update').classList.toggle('err', !!S.sheet.err);
@@ -1193,15 +1213,20 @@
         ? `รหัสในใบงานที่ไม่มีบนผัง:\n${S.sheet.unmatched.map(([c, n]) => `${c}${n > 1 ? ` (${n} ใบ)` : ''}`).join('\n')}` : '';
     }
     renderWoLoginBtn();
-    patch($('#l-alerts'), 'lalerts', [rows, S.lPlant], () => alerts.length ? alerts.map(a => {
+    const alertHtml = (a, isPm) => {
       const age = now - a.since;
       const more = a.jobs.length > 1 ? ` (+${a.jobs.length - 1} งาน)` : '';
-      return `<button type="button" class="l-alert ${a.stopped ? 'stop' : ''}" data-mid="${a.m.id}" title="แสดงตำแหน่งบนผัง">
-        <span class="l-alert-top">${tag(a.m.name, true)}${a.stopped ? `<span class="badge badge-danger">${ico('stop')}หยุด</span>` : ''}<span class="l-age ${age > 4 * 3600e3 ? 'age-bad' : ''}">ค้าง ${fmtDur(age)}</span></span>
+      const badge = isPm ? '<span class="badge badge-pm">PM</span>'
+        : a.stopped ? `<span class="badge badge-danger">${ico('stop')}หยุด</span>` : '';
+      return `<button type="button" class="l-alert ${isPm ? 'pm' : a.stopped ? 'stop' : ''}" data-mid="${a.m.id}" title="แสดงตำแหน่งบนผัง">
+        <span class="l-alert-top">${isPm ? `<span class="tag tag-pm">${esc(a.m.name)}</span>` : tag(a.m.name, true)}${badge}<span class="l-age ${!isPm && age > 4 * 3600e3 ? 'age-bad' : ''}">${isPm ? 'เริ่ม PM' : 'ค้าง'} ${fmtDur(age)}</span></span>
         <span class="l-alert-loc">${esc(locText(X, a.m))}</span>
         <span class="l-alert-prob">${isSheetJob(a.latest) && a.latest.wo ? `<b>${esc(a.latest.wo)}</b> ` : ''}${esc(a.latest.problem)}${more}</span>
       </button>`;
-    }).join('') : `<div class="l-empty">${ico('check-circle')}<b>ทุกเครื่องปกติ</b><span>ไม่มีงานซ่อมค้าง${all ? '' : `ใน${esc(plantName(S.lPlant))}`}</span></div>`);
+    };
+    patch($('#l-alerts'), 'lalerts', [rows, S.lPlant], () => (alerts.length || pmList.length)
+      ? alerts.map(a => alertHtml(a, false)).join('') + pmList.map(a => alertHtml(a, true)).join('')
+      : `<div class="l-empty">${ico('check-circle')}<b>ทุกเครื่องปกติ</b><span>ไม่มีงานซ่อมค้าง${all ? '' : `ใน${esc(plantName(S.lPlant))}`}</span></div>`);
 
     // ตารางเครื่องจักร
     const z = S.lZone != null ? X.zoneById.get(S.lZone) : null;
@@ -1213,14 +1238,14 @@
     const plantOrder = new Map(PLANTS.map((p, i) => [p.id, i]));
     const list = S.machines.filter(m => inScope(m)
       && (S.lZone == null || m.zone_id === S.lZone)
-      && (S.lStatus === 'all' || (S.lStatus === 'bad') === X.broken.has(m.id))
+      && stateFilter(S.lStatus, mState(X, m.id))
       && (!q || norm(m.name).includes(q) || norm(m.detail).includes(q)))
-      .sort((a, b) => (X.broken.has(b.id) - X.broken.has(a.id))
+      .sort((a, b) => (mState(X, b.id) - mState(X, a.id))
         || ((plantOrder.get(a.plant) ?? 99) - (plantOrder.get(b.plant) ?? 99))
         || ((order.get(a.zone_id) ?? 999) - (order.get(b.zone_id) ?? 999)) || byName(a, b));
     $('#l-title').textContent = ` · ${all ? 'ทุกโรง' : plantName(S.lPlant)}`;
     $('#l-count').textContent = list.length;
-    patch($('#l-list'), 'llist', [list, S.zones, [...X.broken], all], () => machineTable(X, list, all));
+    patch($('#l-list'), 'llist', [list, S.zones, [...X.broken], [...X.pm.keys()], all], () => machineTable(X, list, all));
   }
 
   // ---------- ผังเต็มจอ ----------
@@ -1439,14 +1464,14 @@
       && (!q || norm(m.name).includes(q) || norm(m.detail).includes(q) || norm(X.zoneById.get(m.zone_id)?.name).includes(q)))
       .sort((a, b) => a.plant.localeCompare(b.plant) || byName(a, b));
     const rows = list.slice(0, S.mShow);
-    patch($('#machine-table'), 'mtable', [rows, list.length, S.zones, rows.map(m => X.broken.get(m.id))], () => {
+    patch($('#machine-table'), 'mtable', [rows, list.length, S.zones, rows.map(m => [X.broken.get(m.id), X.pm.has(m.id)])], () => {
       if (!rows.length) return '<p class="empty">ไม่พบเครื่องจักร</p>';
       return `<div class="mrows">${rows.map(m => `
         <div class="mrow" data-id="${m.id}">
           <input class="m-name" value="${esc(m.name)}" maxlength="80" aria-label="รหัสเครื่อง">
           <input class="m-detail" value="${esc(m.detail)}" maxlength="120" placeholder="รายละเอียด" aria-label="รายละเอียดของ ${esc(m.name)}">
           <span class="m-loc muted small">${esc(locText(X, m))}</span>
-          <span class="m-status">${m.verify ? '<span class="badge badge-warn">รอตรวจ</span>' : machineBadge(X.broken.get(m.id))}</span>
+          <span class="m-status">${m.verify ? '<span class="badge badge-warn">รอตรวจ</span>' : machineBadge(X.broken.get(m.id), X.pm.get(m.id))}</span>
           <span class="m-btns">
             ${m.verify ? `<button type="button" class="btn btn-sm" data-act="ok-machine" title="ยืนยันว่ารหัสถูกต้อง" aria-label="ยืนยันรหัส ${esc(m.name)}">${ico('check')}</button>` : ''}
             <button type="button" class="btn btn-sm" data-act="locate" title="ดูบนผัง" aria-label="ดู ${esc(m.name)} บนผัง">${ico('target')}</button>

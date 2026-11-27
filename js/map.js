@@ -400,6 +400,7 @@
       g._name = mk('tspan', { class: 'pn' }, g._text);
       g._ok = mk('tspan', { class: 'pk' }, g._text);
       g._bad = mk('tspan', { class: 'pb' }, g._text);
+      g._pm = mk('tspan', { class: 'pp' }, g._text);
       g._go = mk('tspan', { class: 'pg' }, g._text);
       g._name.textContent = part.plant.name;
       g._go.textContent = '  ›';
@@ -408,20 +409,22 @@
     }
 
     _renderTitles(o) {
-      const cnt = new Map(this.parts.map(p => [p.plant.id, { total: 0, bad: 0, stop: 0 }]));
+      const cnt = new Map(this.parts.map(p => [p.plant.id, { total: 0, bad: 0, stop: 0, pm: 0 }]));
       for (const m of this.allMachines) {       // นับทุกเครื่องของโรง รวมที่อยู่นอกกรอบอาคาร
         const c = cnt.get(m.plant);
         const b = o.broken && o.broken.get(m.id);
         c.total++;
-        if (b) { c.bad++; if (b.stopped) c.stop++; }
+        if (b) { c.bad++; if (b.stopped) c.stop++; } else if (o.pm && o.pm.get(m.id)) c.pm++;
       }
       for (const [id, g] of this.titles) {
         const c = cnt.get(id);
+        const ok = c.total - c.bad - c.pm;
         g.classList.toggle('bad', c.bad > 0);
         g.classList.toggle('stop', c.stop > 0);
-        g._ok.textContent = `   ปกติ ${c.total - c.bad}`;
+        g._ok.textContent = `   ปกติ ${ok}`;
         g._bad.textContent = c.bad ? `   เสีย ${c.bad}${c.stop ? ` (หยุด ${c.stop})` : ''}` : '';
-        const label = `${g._name.textContent}: ปกติ ${c.total - c.bad} เครื่อง${c.bad ? ` เสีย ${c.bad} เครื่อง` : ''} — แตะเพื่อเปิดผังโรงนี้`;
+        g._pm.textContent = c.pm ? `   PM ${c.pm}` : '';
+        const label = `${g._name.textContent}: ปกติ ${ok} เครื่อง${c.bad ? ` เสีย ${c.bad} เครื่อง` : ''}${c.pm ? ` กำลังทำ PM ${c.pm} เครื่อง` : ''} — แตะเพื่อเปิดผังโรงนี้`;
         g._title.textContent = label;
         g.setAttribute('aria-label', label);
       }
@@ -461,7 +464,8 @@
     }
 
     /**
-     * o: { zones, machines, broken: Map(machineId → {open, stopped}), stats: Map(zoneId → {open, stopped}),
+     * o: { zones, machines, broken: Map(machineId → {open, stopped}), pm: Map(machineId → {open}) (กำลังทำ PM),
+     *      stats: Map(zoneId → {open, stopped}),
      *      filterZone, selected: {type,id}|null, layer: 'machine'|'zone', flash: Set(machineId) }
      */
     render(o) {
@@ -484,9 +488,11 @@
       this._applyView();
     }
 
-    /** ป้ายเตือน: เครื่องที่เสียแต่อยู่นอกกรอบอาคาร (ไม่ได้แสดงบนผังตอนตัดขอบ) */
+    /** ป้ายเตือน: เครื่องที่เสีย / กำลังทำ PM แต่อยู่นอกกรอบอาคาร (ไม่ได้แสดงบนผังตอนตัดขอบ) */
     _renderOutside(o, hidden) {
-      const bad = hidden.filter(m => o.broken && o.broken.get(m.id));
+      const isBad = m => !!(o.broken && o.broken.get(m.id));
+      const isPm = m => !isBad(m) && !!(o.pm && o.pm.get(m.id));
+      const bad = hidden.filter(m => isBad(m) || isPm(m));
       if (!this.outEl) {
         if (!bad.length) return;
         this.outEl = document.createElement('div');
@@ -498,20 +504,23 @@
         this.host.appendChild(this.outEl);
       }
       this.outEl.hidden = !bad.length;
-      const sig = bad.map(m => `${m.id}:${m.name}:${o.broken.get(m.id).stopped ? 1 : 0}`).join('|');
+      const kind = m => (isPm(m) ? 'pm' : o.broken.get(m.id).stopped ? 'stop' : '');
+      const sig = bad.map(m => `${m.id}:${m.name}:${kind(m)}`).join('|');
       if (sig === this.outSig) return;
       this.outSig = sig;
       this.outEl.textContent = '';
+      const anyBad = bad.some(isBad), anyPm = bad.some(isPm);
+      this.outEl.classList.toggle('pm', anyPm && !anyBad);
       const lab = document.createElement('span');
-      lab.textContent = 'เสียนอกอาคาร';
+      lab.textContent = anyBad && anyPm ? 'นอกอาคาร' : anyPm ? 'PM นอกอาคาร' : 'เสียนอกอาคาร';
       this.outEl.appendChild(lab);
       for (const m of bad) {
         const b = document.createElement('button');
         b.type = 'button';
         b.dataset.m = m.id;
-        b.className = o.broken.get(m.id).stopped ? 'stop' : '';
-        b.textContent = m.name;
-        b.title = `${m.name} อยู่นอกอาคาร — กดเพื่อดูรายละเอียด`;
+        b.className = kind(m);
+        b.textContent = m.name + (isPm(m) && anyBad ? ' PM' : '');
+        b.title = `${m.name} อยู่นอกอาคาร${isPm(m) ? ' (กำลังทำ PM)' : ''} — กดเพื่อดูรายละเอียด`;
         this.outEl.appendChild(b);
       }
     }
@@ -574,8 +583,11 @@
           }
           this.mEls.set(m.id, g);
         }
+        // PM (บำรุงรักษาตามแผน) = เหลือง — ถ้าเครื่องเสียด้วย แสดงสีแดงก่อน
+        const pm = !b && o.pm && o.pm.get(m.id);
         g.classList.toggle('bad', !!b);
         g.classList.toggle('stop', !!(b && b.stopped));
+        g.classList.toggle('pm', !!pm);
         g.classList.toggle('verify', this.editable && !!m.verify);
         g.classList.toggle('dim', o.filterZone != null && m.zone_id !== o.filterZone);
         g.classList.toggle('sel', !!(o.selected && o.selected.type === 'machine' && o.selected.id === m.id));
@@ -584,12 +596,12 @@
           if (g._code.textContent !== m.name) g._code.textContent = m.name;
           const det = m.detail && m.detail !== m.name ? m.detail : '';
           if (g._det.textContent !== det) g._det.textContent = det;
-          const status = b ? `เสีย — งานค้าง ${b.open}${b.stopped ? ' (เครื่องหยุด)' : ''}` : 'ปกติ';
+          const status = b ? `เสีย — งานค้าง ${b.open}${b.stopped ? ' (เครื่องหยุด)' : ''}` : pm ? 'กำลังทำ PM' : 'ปกติ';
           const label = `${m.name}${det ? ' ' + det : ''} — ${status}${this.editable && m.verify ? ' — รอตรวจรหัส' : ''}`;
           if (g._title.textContent !== label) { g._title.textContent = label; g.setAttribute('aria-label', label); }
         }
         this._placeMachine(g, m);
-        this._pin(m, b);
+        this._pin(m, b, pm);
       }
       for (const [id, g] of this.mEls) if (!seen.has(id)) { g.remove(); this.mEls.delete(id); }
       for (const [id, p] of this.pins) if (!seen.has(id)) { p.remove(); this.pins.delete(id); }
@@ -632,10 +644,10 @@
       g._fs = fs;
     }
 
-    // ---------- ป้ายชี้เครื่องที่เสีย ----------
-    _pin(m, b) {
+    // ---------- ป้ายชี้เครื่องที่เสีย (แดง) / กำลังทำ PM (เหลือง) ----------
+    _pin(m, b, pm) {
       let p = this.pins.get(m.id);
-      if (!b) { if (p) { p.remove(); this.pins.delete(m.id); } return; }
+      if (!b && !pm) { if (p) { p.remove(); this.pins.delete(m.id); } return; }
       if (!p) {
         p = mk('g', this.mini ? { class: 'pin' } : { class: 'pin', 'data-m': m.id }, this.gPins);
         if (this.mini) mk('circle', { class: 'pin-dot', r: 6, cy: 0 }, p);
@@ -646,10 +658,11 @@
         }
         this.pins.set(m.id, p);
       }
-      p.classList.toggle('stop', !!b.stopped);
+      p.classList.toggle('stop', !!(b && b.stopped));
+      p.classList.toggle('pm', !b);
       p._m = m;
       if (p._t) {
-        const txt = m.name + (b.stopped ? ' หยุด' : '');
+        const txt = m.name + (b ? (b.stopped ? ' หยุด' : '') : ' PM');
         if (p._t.textContent !== txt) p._t.textContent = txt;
         const w = txt.length * 7.2 + 16;
         p._bg.setAttribute('x', -w / 2);

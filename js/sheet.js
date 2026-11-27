@@ -32,7 +32,10 @@
     problem: [/issued|อาการ|ปัญหา|problem|symptom/i, /รายละเอียด|detail/i],
     stopped: [/เครื่องหยุด|หยุดเครื่อง|machine\s*stop|downtime/i],
     line: [/^\s*line|ไลน์/i],
+    kind: [/work\s*type|ประเภทงาน/i, /catagory|category|หมวดหมู่/i],     // งาน PM = บำรุงรักษาตามแผน (สีเหลือง)
   };
+  /** ประเภทงานเป็น PM (Preventive Maintenance) ไหม */
+  const isPm = v => /(^|[^a-z])pm([^a-z]|$)|preventive/i.test(String(v || ''));
 
   function settings() {
     let s = {};
@@ -238,6 +241,7 @@
         time: parseTime(get(r, 'time')),
         problem: String(get(r, 'problem') || '').trim(),
         line: String(get(r, 'line') || '').trim(),
+        pm: isPm(get(r, 'kind')),
       });
     }
     return { url, headers, cols, rows };
@@ -270,7 +274,8 @@
       if (!firstSeen.has(id)) firstSeen.set(id, now);
       jobs.push({
         id, source: 'sheet', wo: r.wo, machine_id: m.id, status: 'open',
-        stopped: r.stopped ? 1 : 0,
+        pm: !!r.pm,                                // งาน PM: เครื่องเป็นสีเหลือง ไม่นับเป็นเครื่องเสีย
+        stopped: r.pm ? 0 : (r.stopped ? 1 : 0),
         problem: r.problem || r.status || 'ใบงานจาก Monitoring Center',
         impact: r.line ? `ไลน์ ${r.line}` : '',
         created_at: new Date(r.time || firstSeen.get(id)).toISOString(),
