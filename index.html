@@ -319,6 +319,7 @@
             <span><i class="lg lg-stop"></i>เครื่องหยุด <b id="l-stop">0</b></span>
             <span class="muted" id="l-hint"></span>
             <span class="muted small" id="l-update"></span>
+            <button type="button" class="btn btn-soft btn-sm" id="l-login" hidden></button>
           </div>
         </div>
         <!-- รายการเครื่องเสีย: ปกติอยู่ตรงนี้ (ใต้ผัง) · ตอนเต็มจอย้ายเข้าไปลอยบนผัง (ดู syncLayoutSide ใน app.js) -->
@@ -455,6 +456,28 @@
   </form>
 </dialog>
 
+<!-- ===================== เข้าสู่ระบบเพื่อดูใบงาน (หน้าผังที่เปิดผ่าน Apps Script) ===================== -->
+<dialog id="wo-login" class="dialog dialog-sm" aria-labelledby="wo-login-title">
+  <form method="dialog" id="wo-login-form" class="dialog-col">
+    <div class="dialog-head">
+      <h2 id="wo-login-title">เข้าสู่ระบบเพื่อดูใบงาน</h2>
+      <button type="button" class="icon-btn" data-close aria-label="ปิดหน้าต่าง"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dialog-body">
+      <p class="muted small" style="margin-top:0">ใช้ Email และรหัสผ่านเดียวกับ Maintenance Monitoring Center (ชีต AuthorizedUsers)</p>
+      <label class="field"><span>Email</span>
+        <input id="wo-email" type="email" autocomplete="username" required></label>
+      <label class="field"><span>รหัสผ่าน</span>
+        <input id="wo-pass" type="password" autocomplete="current-password"></label>
+      <p id="wo-login-err" class="sheet-res bad" hidden></p>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>ภายหลัง</button>
+      <button type="submit" class="btn btn-primary" id="wo-login-btn">เข้าสู่ระบบ</button>
+    </div>
+  </form>
+</dialog>
+
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
 <script src="js/config.js"></script>
@@ -463,6 +486,7 @@
 <script src="js/store.js"></script>
 <script src="js/sound.js"></script>
 <script src="js/map.js"></script>
+<script src="js/sheet.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
