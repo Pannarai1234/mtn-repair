@@ -166,19 +166,21 @@
     }
   }
   const logout = () => setToken('');
+  // ต้อง Login ไหม — ฝั่ง Apps Script บอกมา (ตาม REQUIRE_LOGIN ตัวเดียวกับ Dashboard)
+  let loginRequired = false;
 
   async function load(opts = {}) {
     let table;
     if (opts.url == null && viaAppsScript()) {
       const needLogin = () => Object.assign(new Error('กรุณาเข้าสู่ระบบเพื่อดูใบงาน'), { code: 'LOGIN' });
-      if (!getToken()) throw needLogin();
       let r;
       try {
         r = await gsRun('getLayoutWorkOrders', getToken());
       } catch (err) {
         throw new Error(`อ่านใบงานไม่ได้: ${String((err && err.message) || err)}`);
       }
-      if (!r || r.auth === false) { setToken(''); throw needLogin(); }     // token หมดอายุ / ถูกระงับสิทธิ์
+      loginRequired = !!(r && r.login);
+      if (!r || r.auth === false) { setToken(''); throw needLogin(); }     // ต้อง Login / token หมดอายุ / ถูกระงับสิทธิ์
       if (r.error) throw new Error(r.error);
       table = r.values || [];
       return parseTable(table, 'apps-script');
@@ -231,7 +233,8 @@
         key: norm(code),
         status,
         open: cols.status >= 0 ? !isClosed(status) : true,
-        stopped: isStopFlag(get(r, 'stopped')) || /stop|หยุด/i.test(status) && !/ไม่/.test(status) && cols.stopped < 0,
+        // เครื่องหยุด: คอลัมน์เครื่องหยุดเป็น "ใช่" หรือสถานะบอกว่าหยุด (เช่น "MACHINE STOP")
+        stopped: isStopFlag(get(r, 'stopped')) || (/stop|หยุด/i.test(status) && !/ไม่|non/i.test(status)),
         time: parseTime(get(r, 'time')),
         problem: String(get(r, 'problem') || '').trim(),
         line: String(get(r, 'line') || '').trim(),
@@ -281,6 +284,6 @@
   window.SheetFeed = {
     settings, save, load, toJobs, sourceUrl, parseTime,
     enabled: () => viaAppsScript() || !!settings().url,
-    viaAppsScript, login, logout, loggedIn: () => !!getToken(),
+    viaAppsScript, login, logout, loggedIn: () => !!getToken(), loginRequired: () => loginRequired,
   };
 })();

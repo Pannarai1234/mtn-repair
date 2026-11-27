@@ -391,7 +391,8 @@
   function renderWoLoginBtn() {
     const b = $('#l-login');
     if (!b) return;
-    const on = SheetFeed && SheetFeed.viaAppsScript();
+    // แสดงเฉพาะตอนที่ระบบตั้งให้ต้อง Login (REQUIRE_LOGIN = true ใน Apps Script)
+    const on = SheetFeed && SheetFeed.viaAppsScript() && (S.sheet.needLogin || SheetFeed.loginRequired());
     b.hidden = !on;
     if (!on) return;
     const need = !SheetFeed.loggedIn() || S.sheet.needLogin;
@@ -417,7 +418,8 @@
     const t = d => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     if (s.err) return `⚠ ${s.err}${s.at ? ` (ข้อมูลล่าสุด ${t(s.at)})` : ''}`;
     if (!s.at) return 'กำลังโหลดใบงานจาก Google Sheet…';
-    return `ใบงานจาก Google Sheet · อัปเดต ${t(s.at)}`;
+    const miss = s.unmatched.length ? ` · ไม่พบรหัสบนผัง ${s.unmatched.length} รหัส` : '';
+    return `ใบงานจาก Google Sheet · อัปเดต ${t(s.at)}${miss}`;
   }
 
   /** ห่อการบันทึกข้อมูล: แสดง error, ดึงข้อมูลใหม่ทุกครั้ง; คืน null ถ้าไม่สำเร็จ */
@@ -1186,6 +1188,9 @@
     if (useSheet()) {
       $('#l-update').textContent = sheetStatusText();
       $('#l-update').classList.toggle('err', !!S.sheet.err);
+      // ชี้เมาส์ดูรหัสเครื่องในใบงานที่หาบนผังไม่เจอ (ใบงานเหล่านี้ไม่แสดงบนผัง)
+      $('#l-update').title = S.sheet.unmatched.length
+        ? `รหัสในใบงานที่ไม่มีบนผัง:\n${S.sheet.unmatched.map(([c, n]) => `${c}${n > 1 ? ` (${n} ใบ)` : ''}`).join('\n')}` : '';
     }
     renderWoLoginBtn();
     patch($('#l-alerts'), 'lalerts', [rows, S.lPlant], () => alerts.length ? alerts.map(a => {
